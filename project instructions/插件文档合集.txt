@@ -1,0 +1,8 @@
+phantom camera：
+github仓库：https://github.com/ramokz/phantom-camera
+项目官网：https://phantom-camera.dev/
+官方文档：https://phantom-camera.dev/overview/what-is-this
+
+godot state charts：
+github仓库：https://github.com/derkork/godot-statecharts
+官方文档：https://derkork.github.io/godot-statecharts/

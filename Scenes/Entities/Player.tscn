@@ -1,0 +1,94 @@
+[gd_scene load_steps=12 format=3 uid="uid://dww36atsckfjp"]
+
+[ext_resource type="Script" uid="uid://duh7u740848mj" path="res://Scripts/entity/Player.gd" id="1_player"]
+[ext_resource type="Script" uid="uid://bk5tsvakddhtu" path="res://Scripts/components/CameraRig.gd" id="2_camerarig"]
+[ext_resource type="Texture2D" uid="uid://bou7pfqg8n331" path="res://Assets/Sprites/test_sprite.png" id="3_sprite"]
+[ext_resource type="Script" uid="uid://couw105c3bde4" path="res://addons/godot_state_charts/state_chart.gd" id="4_statechart"]
+[ext_resource type="Script" uid="uid://jk2jm1g6q853" path="res://addons/godot_state_charts/compound_state.gd" id="5_compound"]
+[ext_resource type="Script" uid="uid://cytafq8i1y8qm" path="res://addons/godot_state_charts/atomic_state.gd" id="6_atomic"]
+[ext_resource type="Script" uid="uid://cf1nsco3w0mf6" path="res://addons/godot_state_charts/transition.gd" id="7_transition"]
+[ext_resource type="Script" uid="uid://8umksf8e80fw" path="res://addons/phantom_camera/scripts/resources/tween_resource.gd" id="8_km4ui"]
+[ext_resource type="Script" uid="uid://bhexx6mj1xv3q" path="res://addons/phantom_camera/scripts/phantom_camera/phantom_camera_2d.gd" id="8_pcam2d"]
+
+[sub_resource type="Resource" id="Resource_rsj4h"]
+script = ExtResource("8_km4ui")
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_player"]
+size = Vector2(24, 24)
+
+[node name="Player" type="CharacterBody2D" groups=["player"]]
+collision_layer = 8
+collision_mask = 4
+script = ExtResource("1_player")
+
+[node name="StateChart" type="Node" parent="."]
+script = ExtResource("4_statechart")
+
+[node name="Root" type="Node" parent="StateChart"]
+script = ExtResource("5_compound")
+initial_state = NodePath("Interacting")
+
+[node name="Idle" type="Node" parent="StateChart/Root"]
+script = ExtResource("6_atomic")
+
+[node name="ToMoving" type="Node" parent="StateChart/Root/Idle"]
+script = ExtResource("7_transition")
+event = &"move_requested"
+delay_in_seconds = "0.0"
+
+[node name="ToInteracting" type="Node" parent="StateChart/Root/Idle"]
+script = ExtResource("7_transition")
+event = &"interact"
+delay_in_seconds = "0.0"
+
+[node name="Moving" type="Node" parent="StateChart/Root"]
+script = ExtResource("6_atomic")
+
+[node name="ToIdle" type="Node" parent="StateChart/Root/Moving"]
+script = ExtResource("7_transition")
+event = &"arrived"
+delay_in_seconds = "0.0"
+
+[node name="ToIdleStop" type="Node" parent="StateChart/Root/Moving"]
+script = ExtResource("7_transition")
+event = &"stop"
+delay_in_seconds = "0.0"
+
+[node name="Interacting" type="Node" parent="StateChart/Root"]
+script = ExtResource("6_atomic")
+
+[node name="ToIdle" type="Node" parent="StateChart/Root/Interacting"]
+script = ExtResource("7_transition")
+event = &"interact_done"
+delay_in_seconds = "0.0"
+
+[node name="NavigationAgent2D" type="NavigationAgent2D" parent="."]
+path_desired_distance = 8.0
+target_desired_distance = 8.0
+
+[node name="CameraRig" type="Node2D" parent="."]
+script = ExtResource("2_camerarig")
+
+[node name="PhantomCamera2D" type="Node2D" parent="CameraRig" node_paths=PackedStringArray("follow_target")]
+top_level = true
+script = ExtResource("8_pcam2d")
+priority = 10
+follow_mode = 2
+follow_target = NodePath("..")
+tween_resource = SubResource("Resource_rsj4h")
+follow_damping = true
+
+[node name="Visuals" type="Node2D" parent="."]
+
+[node name="Sprite2D" type="Sprite2D" parent="Visuals"]
+texture = ExtResource("3_sprite")
+offset = Vector2(0, -16)
+
+[node name="AnimationPlayer" type="AnimationPlayer" parent="Visuals"]
+
+[node name="SelectionMarker" type="Sprite2D" parent="Visuals"]
+visible = false
+z_index = -1
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="."]
+shape = SubResource("RectangleShape2D_player")
