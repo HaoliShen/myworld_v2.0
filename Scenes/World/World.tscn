@@ -69,14 +69,17 @@ script = ExtResource("14_pcamhost")
 [node name="GroundLayer" type="TileMapLayer" parent="Environment"]
 z_index = -10
 tile_set = ExtResource("9_tileset")
+navigation_enabled = false
 
 [node name="DecorationLayer" type="TileMapLayer" parent="Environment"]
 y_sort_enabled = true
 tile_set = ExtResource("9_tileset")
+navigation_enabled = false
 
 [node name="ObstacleLayer" type="TileMapLayer" parent="Environment"]
 y_sort_enabled = true
 tile_set = ExtResource("9_tileset")
+navigation_enabled = false
 
 [node name="NavigationLayer" type="TileMapLayer" parent="Environment"]
 visible = false
@@ -105,3 +108,5 @@ anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 2
+
+[node name="DebugOutput" type="Label" parent="UI"]

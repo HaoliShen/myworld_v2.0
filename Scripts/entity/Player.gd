@@ -40,9 +40,9 @@ signal selection_changed(is_selected: bool)
 
 @export_group("Movement")
 ## 基础移动速度
-@export var base_speed: float = 200.0
+@export var base_speed: float = 600.0
 ## 加速度
-@export var acceleration: float = 2000.0
+@export var acceleration: float = 3000.0
 ## 摩擦力 (减速度)
 @export var friction: float = 1500.0
 ## 上坡速度倍率
@@ -112,14 +112,16 @@ var _facing_direction: Vector2 = Vector2.DOWN
 # =============================================================================
 
 func _ready() -> void:
+	print("[Player] _ready() called")
 	_setup_navigation()
 	_setup_visuals()
 	_update_current_chunk()
+	print("[Player] Initial chunk: %s at position: %s" % [_current_chunk, global_position])
 	add_to_group("player")
 
-	# 初始隐藏选中标记
 	if _selection_marker:
 		_selection_marker.visible = false
+	print("[Player] Initialization complete")
 
 
 func _physics_process(delta: float) -> void:
@@ -409,9 +411,14 @@ func _check_chunk_change() -> void:
 		var old_chunk := _current_chunk
 		_current_chunk = new_chunk
 
-		# 发送信号
+		print("\n========== PLAYER CHUNK CHANGE ==========")
+		print("[Player] Chunk changed: %s -> %s (pos: %s)" % [old_chunk, new_chunk, global_position])
+		print("[Player] Emitting chunk_changed signal...")
 		chunk_changed.emit(old_chunk, new_chunk)
+		print("[Player] Emitting SignalBus.player_chunk_changed signal...")
 		SignalBus.player_chunk_changed.emit(old_chunk, new_chunk)
+		print("[Player] Signals emitted successfully")
+		print("=========================================\n")
 
 
 # =============================================================================

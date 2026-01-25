@@ -75,6 +75,10 @@ var loaded_data: Dictionary = {}
 ## Key: Vector2i (区块坐标) -> Value: ChunkLogic (场景节点)
 var active_nodes: Dictionary = {}
 
+## 已渲染的区块字典
+## Key: Vector2i (区块坐标) -> Value: bool
+var rendered_chunks: Dictionary = {}
+
 ## 正在加载中的区块集合 (防止重复请求)
 ## Key: Vector2i -> Value: bool
 var _pending_loads: Dictionary = {}
@@ -146,8 +150,12 @@ func initialize_world(seed: int) -> void:
 
 ## 连接信号
 func _connect_signals() -> void:
+	print("[WorldManager] Connecting signals...")
 	SignalBus.player_chunk_changed.connect(_on_player_chunk_changed)
+	print("[WorldManager] Connected to SignalBus.player_chunk_changed")
 	SignalBus.chunk_modified.connect(_on_chunk_modified)
+	print("[WorldManager] Connected to SignalBus.chunk_modified")
+	print("[WorldManager] All signals connected successfully")
 
 
 ## 世界启动入口 (Startup Entry Point)
@@ -229,6 +237,7 @@ func _startup_world() -> void:
 ## 4. 对比当前状态，执行状态迁移操作 (Load Data / Render / Spawn Logic / Unload)
 ## @param player_chunk_coord: 玩家当前所在的区块坐标
 func update_chunks(player_chunk_coord: Vector2i) -> void:
+	print("[WorldManager] update_chunks called for player at chunk: %s" % player_chunk_coord)
 	_player_chunk = player_chunk_coord
 
 	# 收集需要进行状态迁移的区块
@@ -240,9 +249,16 @@ func update_chunks(player_chunk_coord: Vector2i) -> void:
 	var chunks_to_unload_data: Array[Vector2i] = []
 
 	# 计算各层级需要的区块
-	var active_range := _MapUtils.get_chunks_in_radius(player_chunk_coord, RADIUS_ACTIVE)
-	var ready_range := _MapUtils.get_chunks_in_radius(player_chunk_coord, RADIUS_READY)
-	var data_range := _MapUtils.get_chunks_in_radius(player_chunk_coord, RADIUS_DATA)
+	var active_range := _MapUtils.get_chunks_in_radius(player_chunk_coord, _C.ACTIVE_LOAD_RADIUS)
+	var ready_range := _MapUtils.get_chunks_in_radius(player_chunk_coord, _C.READY_LOAD_RADIUS)
+	var data_range := _MapUtils.get_chunks_in_radius(player_chunk_coord, _C.DATA_LOAD_RADIUS)
+	
+	print("\n========== UPDATE CHUNKS ==========")
+	print("[WorldManager] Player chunk coord: %s" % player_chunk_coord)
+	print("[WorldManager] Load radii - ACTIVE: %d, READY: %d, DATA: %d" % [_C.ACTIVE_LOAD_RADIUS, _C.READY_LOAD_RADIUS, _C.DATA_LOAD_RADIUS])
+	print("[WorldManager] Unload radii - ACTIVE: %d, READY: %d, DATA: %d" % [_C.ACTIVE_UNLOAD_RADIUS, _C.READY_UNLOAD_RADIUS, RADIUS_UNLOAD])
+	print("[WorldManager] Range sizes - Active: %d, Ready: %d, Data: %d" % [active_range.size(), ready_range.size(), data_range.size()])
+	print("[WorldManager] Current state - loaded_data: %d, rendered_chunks: %d, active_nodes: %d" % [loaded_data.size(), rendered_chunks.size(), active_nodes.size()])
 
 	# 1. 确定需要加载数据的区块 (进入 DATA 层)
 	for coord in data_range:
@@ -272,7 +288,8 @@ func update_chunks(player_chunk_coord: Vector2i) -> void:
 	# 注意: 由于 ChunkLogic._exit_tree 会自动 clear_chunk，
 	# 这里只处理没有逻辑节点但有渲染的区块
 	for coord in loaded_data.keys():
-		if not active_nodes.has(coord):
+		# 如果当前没有逻辑节点，或者即将销毁逻辑节点，都视为非活跃
+		if not active_nodes.has(coord) or chunks_to_despawn_logic.has(coord):
 			var distance := _MapUtils.chebyshev_distance(coord, player_chunk_coord)
 			if distance > _C.READY_UNLOAD_RADIUS:
 				if _is_chunk_rendered(coord):
@@ -286,6 +303,19 @@ func update_chunks(player_chunk_coord: Vector2i) -> void:
 
 	# 执行状态迁移 (按顺序)
 	# 先卸载，再加载，避免内存峰值
+	
+	print("[WorldManager] State transitions - Despawn: %d, Unrender: %d, Unload: %d, Load: %d, Render: %d, Spawn: %d" % [
+		chunks_to_despawn_logic.size(), chunks_to_unrender.size(), chunks_to_unload_data.size(),
+		chunks_to_load_data.size(), chunks_to_render.size(), chunks_to_spawn_logic.size()
+	])
+	if chunks_to_load_data.size() > 0:
+		print("[WorldManager] Chunks to LOAD DATA: %s" % chunks_to_load_data)
+	if chunks_to_render.size() > 0:
+		print("[WorldManager] Chunks to RENDER: %s" % chunks_to_render)
+	if chunks_to_unrender.size() > 0:
+		print("[WorldManager] Chunks to UNRENDER: %s" % chunks_to_unrender)
+	if chunks_to_unload_data.size() > 0:
+		print("[WorldManager] Chunks to UNLOAD DATA: %s" % chunks_to_unload_data)
 
 	# 卸载逻辑节点
 	for coord in chunks_to_despawn_logic:
@@ -301,16 +331,19 @@ func update_chunks(player_chunk_coord: Vector2i) -> void:
 
 	# 请求加载数据 (异步)
 	for coord in chunks_to_load_data:
+		print("[WorldManager] Requesting chunk data for: %s" % coord)
 		_request_chunk_data(coord)
 
 	# 渲染 (需要数据已加载)
 	for coord in chunks_to_render:
 		if loaded_data.has(coord):
+			print("[WorldManager] Rendering chunk: %s" % coord)
 			_render_chunk_visuals(coord, loaded_data[coord])
 
 	# 生成逻辑节点 (需要已渲染)
 	for coord in chunks_to_spawn_logic:
 		if loaded_data.has(coord):
+			print("[WorldManager] Spawning logic for chunk: %s" % coord)
 			_spawn_chunk_logic(coord)
 
 
@@ -493,6 +526,7 @@ func _render_chunk_visuals(coord: Vector2i, data) -> void:
 		return
 
 	_map_controller.render_chunk(coord, data)
+	rendered_chunks[coord] = true
 
 
 ## [状态迁移] 卸载区块视觉
@@ -502,6 +536,7 @@ func _unload_chunk_visuals(coord: Vector2i) -> void:
 		return
 
 	_map_controller.clear_chunk(coord)
+	rendered_chunks.erase(coord)
 
 
 ## [状态迁移] 生成逻辑节点
@@ -538,7 +573,7 @@ func _despawn_chunk_logic(coord: Vector2i) -> void:
 	active_nodes.erase(coord)
 
 	if node and is_instance_valid(node):
-		# 注意: ChunkLogic._exit_tree 会自动调用 clear_chunk
+		# 注意: ChunkLogic._exit_tree 不再自动调用 clear_chunk
 		node.queue_free()
 
 	# 发送信号
@@ -580,13 +615,7 @@ func _unload_chunk_data(coord: Vector2i) -> void:
 ## 简单实现: 如果有活跃节点或数据在 READY 范围内，认为已渲染
 ## 实际项目可能需要更精确的跟踪
 func _is_chunk_rendered(coord: Vector2i) -> bool:
-	# 如果有活跃节点，一定已渲染
-	if active_nodes.has(coord):
-		return true
-
-	# 检查距离是否在渲染范围内
-	var distance := _MapUtils.chebyshev_distance(coord, _player_chunk)
-	return distance <= RADIUS_READY and loaded_data.has(coord)
+	return rendered_chunks.has(coord)
 
 
 # =============================================================================
@@ -594,7 +623,14 @@ func _is_chunk_rendered(coord: Vector2i) -> bool:
 # =============================================================================
 
 func _on_player_chunk_changed(_old_chunk: Vector2i, new_chunk: Vector2i) -> void:
+	var msg = "\n========== WORLDMANAGER SIGNAL RECEIVED ==========\n"
+	msg += "[WorldManager] Received player_chunk_changed signal: %s -> %s\n" % [_old_chunk, new_chunk]
+	msg += "[WorldManager] Calling update_chunks...\n"
+	print(msg)
+	push_warning(msg)
 	update_chunks(new_chunk)
+	print("[WorldManager] update_chunks completed")
+	print("==================================================\n")
 
 
 func _on_chunk_modified(chunk_coord: Vector2i) -> void:

@@ -45,5 +45,9 @@ func setup(target_coord: Vector2i, map_controller) -> void:
 
 ## 守卫逻辑：当节点离开场景树时，强制擦除对应的视觉内容
 func _exit_tree() -> void:
-	if _map_controller and is_instance_valid(_map_controller):
-		_map_controller.clear_chunk(coord)
+	# 移除自动清理逻辑，将渲染生命周期的控制权完全移交给 WorldManager
+	# 这样可以实现 Active(有逻辑) -> Ready(仅渲染) 的平滑过渡
+	pass
+#	if _map_controller and is_instance_valid(_map_controller):
+#		_map_controller.clear_chunk(coord)
+

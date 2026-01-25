@@ -1,0 +1,6 @@
+res://Scenes/World/World.tscn
+res://addons/phantom_camera/themes/theme.tres
+res://Assets/Tilesets/main_tileset.tres
+res://Scripts/core/WorldManager.gd
+res://Scripts/entity/Player.gd
+res://Scripts/components/ChunkLogic.gd
