@@ -118,12 +118,14 @@ func render_chunk(coord: Vector2i, data) -> void:
 	var t_ground_prep = Time.get_ticks_usec()
 
 	# 批量应用地形连接
-	# 使用 Constants 配置的 terrain set
+	# 使用 BetterTerrain 插件 API
 	var time=[]
 	
 	for t_id in terrain_cells:
 		if not terrain_cells[t_id].is_empty():
-			_ground_layer.set_cells_terrain_connect(terrain_cells[t_id], _C.GROUND_TERRAIN_SET, t_id, false)
+			# _ground_layer.set_cells_terrain_connect(terrain_cells[t_id], _C.GROUND_TERRAIN_SET, t_id, false)
+			# 替换为 BetterTerrain.set_cells
+			BetterTerrain.set_cells(_ground_layer, terrain_cells[t_id], t_id)
 			time.append(Time.get_ticks_usec())
 
 	# 2. 渲染物体层 (Layer 1 & 2)
@@ -280,8 +282,8 @@ func _set_object_cell(tile_coord: Vector2i, layer: int, object_id: int) -> void:
 func _update_terrain_connections(_cells: Array[Vector2i]) -> void:
 	# BetterTerrain 插件未启用时，此函数为空操作
 	# 如需启用 BetterTerrain 自动连接功能，请安装插件并取消注释以下代码:
-	# if ClassDB.class_exists("BetterTerrain") and not _cells.is_empty():
-	#     BetterTerrain.update_terrain_cells(_ground_layer, _cells)
+	if not _cells.is_empty():
+		BetterTerrain.update_terrain_cells(_ground_layer, _cells)
 	pass
 
 
