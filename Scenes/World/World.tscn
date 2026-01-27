@@ -1,4 +1,4 @@
-[gd_scene load_steps=15 format=3 uid="uid://ckoeuo3m2frr"]
+[gd_scene load_steps=16 format=3 uid="uid://ckoeuo3m2frr"]
 
 [ext_resource type="Script" uid="uid://dvtdyhvv3oebm" path="res://Scripts/core/WorldManager.gd" id="1_worldmgr"]
 [ext_resource type="Script" uid="uid://b4qqh2sgx72es" path="res://Scripts/core/InteractionManager.gd" id="2_interactionmgr"]
@@ -10,6 +10,7 @@
 [ext_resource type="PackedScene" path="res://Scenes/UI/TileInfoPanel.tscn" id="8_tileinfo"]
 [ext_resource type="TileSet" uid="uid://e1cb042qyxy1" path="res://Assets/Tilesets/main_tileset.tres" id="9_tileset"]
 [ext_resource type="Script" uid="uid://couw105c3bde4" path="res://addons/godot_state_charts/state_chart.gd" id="10_statechart"]
+[ext_resource type="TileSet" uid="uid://d3cyvm6xn5ov1" path="res://Assets/Tilesets/test_tileset.tres" id="11_0phyg"]
 [ext_resource type="Script" uid="uid://jk2jm1g6q853" path="res://addons/godot_state_charts/compound_state.gd" id="11_compound"]
 [ext_resource type="Script" uid="uid://cytafq8i1y8qm" path="res://addons/godot_state_charts/atomic_state.gd" id="12_atomic"]
 [ext_resource type="Script" uid="uid://cf1nsco3w0mf6" path="res://addons/godot_state_charts/transition.gd" id="13_transition"]
@@ -68,7 +69,7 @@ script = ExtResource("14_pcamhost")
 
 [node name="GroundLayer" type="TileMapLayer" parent="Environment"]
 z_index = -10
-tile_set = ExtResource("9_tileset")
+tile_set = ExtResource("11_0phyg")
 navigation_enabled = false
 
 [node name="DecorationLayer" type="TileMapLayer" parent="Environment"]
@@ -82,7 +83,6 @@ tile_set = ExtResource("9_tileset")
 navigation_enabled = false
 
 [node name="NavigationLayer" type="TileMapLayer" parent="Environment"]
-visible = false
 tile_set = ExtResource("9_tileset")
 navigation_visibility_mode = 1
 

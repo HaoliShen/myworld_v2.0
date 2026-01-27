@@ -601,6 +601,7 @@ func _spawn_chunk_logic(coord: Vector2i) -> void:
 ## [状态迁移] 销毁逻辑节点
 ## 职责: 在 active_nodes 中找到对应节点，调用 queue_free()
 func _despawn_chunk_logic(coord: Vector2i) -> void:
+	var t_start = Time.get_ticks_usec()
 	if not active_nodes.has(coord):
 		return
 
@@ -613,6 +614,8 @@ func _despawn_chunk_logic(coord: Vector2i) -> void:
 
 	# 发送信号
 	SignalBus.chunk_deactivated.emit(coord)
+	
+	print("[Profile] _despawn_chunk_logic %s Total: %d us" % [coord, Time.get_ticks_usec() - t_start])
 
 
 ## [状态迁移] 完全卸载数据

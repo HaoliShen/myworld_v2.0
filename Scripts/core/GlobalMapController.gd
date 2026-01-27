@@ -39,10 +39,10 @@ const _MapUtils = preload("res://Scripts/data/MapUtils.gd")
 const NAV_SOURCE_ID: int = 3
 
 ## 可通行 Tile 的 Atlas 坐标
-const NAV_TILE_PASSABLE: Vector2i = Vector2i(56, 29)
+const NAV_TILE_PASSABLE: Vector2i = Vector2i(56, 25)
 
 ## 不可通行 Tile 的 Atlas 坐标 (或使用 -1 表示无 tile)
-const NAV_TILE_BLOCKED: Vector2i = Vector2i(56, 27)
+const NAV_TILE_BLOCKED: Vector2i = Vector2i(56, 26)
 
 # =============================================================================
 # 内部变量 (Internal Variables)
@@ -62,6 +62,7 @@ var _is_initialized: bool = false
 # =============================================================================
 
 func _ready() -> void:
+	print("[GlobalMapController] _ready called - DEBUG CHECK")
 	_initialize()
 
 
@@ -84,6 +85,7 @@ func _initialize() -> void:
 ## @param coord: 区块坐标
 ## @param data: 包含该区块所有信息的纯数据对象
 func render_chunk(coord: Vector2i, data) -> void:
+	var t_start = Time.get_ticks_usec()
 	if not _is_initialized:
 		push_error("GlobalMapController: Not initialized")
 		return
@@ -112,12 +114,17 @@ func render_chunk(coord: Vector2i, data) -> void:
 			terrain_cells[terrain_id].append(tile_coord)
 			
 			ground_cells.append(tile_coord)
+	
+	var t_ground_prep = Time.get_ticks_usec()
 
 	# 批量应用地形连接
 	# 使用 Constants 配置的 terrain set
+	var time=[]
+	
 	for t_id in terrain_cells:
 		if not terrain_cells[t_id].is_empty():
 			_ground_layer.set_cells_terrain_connect(terrain_cells[t_id], _C.GROUND_TERRAIN_SET, t_id, false)
+			time.append(Time.get_ticks_usec())
 
 	# 2. 渲染物体层 (Layer 1 & 2)
 	for packed_key in data.object_map:
@@ -130,12 +137,26 @@ func render_chunk(coord: Vector2i, data) -> void:
 		var tile_coord := base_tile + Vector2i(local_x, local_y)
 		_set_object_cell(tile_coord, layer, object_id)
 
+	var t_obj = Time.get_ticks_usec()
+
 	# 3. 触发 BetterTerrain 更新地形连接
 	_update_terrain_connections(ground_cells)
 	
+	var t_conn = Time.get_ticks_usec()
 	
 	# 4. 更新导航层
 	_update_chunk_navigation(coord, data)
+	
+	var t_nav = Time.get_ticks_usec()
+
+	print("[Profile] render_chunk %s Total: %d us | Prep: %d | Ground0: %d | ground1: %d | zero: %d | Nav: %d" % [
+		coord, t_nav - t_start, 
+		t_ground_prep - t_start,
+		time[0] - t_ground_prep,
+		time[1]-time[0],
+		t_conn-t_obj,
+		t_nav - t_conn
+	])
 
 
 ## 清除指定区块的渲染内容
