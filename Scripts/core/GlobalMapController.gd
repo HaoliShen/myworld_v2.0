@@ -36,13 +36,13 @@ const _MapUtils = preload("res://Scripts/data/MapUtils.gd")
 # =============================================================================
 
 ## 导航 TileSet 中的 Source ID
-const NAV_SOURCE_ID: int = 0
+const NAV_SOURCE_ID: int = 3
 
 ## 可通行 Tile 的 Atlas 坐标
-const NAV_TILE_PASSABLE: Vector2i = Vector2i(0, 0)
+const NAV_TILE_PASSABLE: Vector2i = Vector2i(56, 29)
 
 ## 不可通行 Tile 的 Atlas 坐标 (或使用 -1 表示无 tile)
-const NAV_TILE_BLOCKED: Vector2i = Vector2i(1, 0)
+const NAV_TILE_BLOCKED: Vector2i = Vector2i(56, 27)
 
 # =============================================================================
 # 内部变量 (Internal Variables)
@@ -97,17 +97,27 @@ func render_chunk(coord: Vector2i, data) -> void:
 	# 收集需要更新的瓦片坐标 (用于 BetterTerrain 批量更新)
 	var ground_cells: Array[Vector2i] = []
 
-	# 1. 渲染地面层 (Layer 0)
+	# 1. 渲染地面层 (Layer 0) - 使用 Autotile 批量设置
+	var terrain_cells = {} # Key: terrain_id -> Value: Array[Vector2i]
+	
 	for local_y in range(_C.CHUNK_SIZE):
 		for local_x in range(_C.CHUNK_SIZE):
 			var tile_coord := base_tile + Vector2i(local_x, local_y)
 			var terrain_id = data.get_terrain(local_x, local_y)
-			var elevation = data.get_elevation(local_x, local_y)
+			# var elevation = data.get_elevation(local_x, local_y) # 地形 ID 已包含高度信息
 
-			# 映射逻辑 ID 到视觉 ID
-			var visual_id := _get_mapped_terrain_id(terrain_id, elevation)
-			_set_ground_cell(tile_coord, visual_id)
+			# 收集相同地形的瓦片
+			if not terrain_cells.has(terrain_id):
+				terrain_cells[terrain_id] = []
+			terrain_cells[terrain_id].append(tile_coord)
+			
 			ground_cells.append(tile_coord)
+
+	# 批量应用地形连接
+	# 使用 Constants 配置的 terrain set
+	for t_id in terrain_cells:
+		if not terrain_cells[t_id].is_empty():
+			_ground_layer.set_cells_terrain_connect(terrain_cells[t_id], _C.GROUND_TERRAIN_SET, t_id, false)
 
 	# 2. 渲染物体层 (Layer 1 & 2)
 	for packed_key in data.object_map:
@@ -122,7 +132,8 @@ func render_chunk(coord: Vector2i, data) -> void:
 
 	# 3. 触发 BetterTerrain 更新地形连接
 	_update_terrain_connections(ground_cells)
-
+	
+	
 	# 4. 更新导航层
 	_update_chunk_navigation(coord, data)
 
@@ -208,18 +219,6 @@ func set_cell_at(global_pos: Vector2, layer_enum: int, tile_id: int) -> void:
 # 内部辅助方法 (Internal Helpers)
 # =============================================================================
 
-## 将 ChunkData 中存储的"基础地形类型"和"高度值"组合映射为 TileSet 中实际定义的 Terrain ID
-## 例如: 类型=草(2), 高度=1 -> 映射为特定的视觉 ID
-## @param base_type: 地形类型 ID
-## @param elevation: 高度值
-## @return: 映射后的视觉 ID (用于 TileSet)
-func _get_mapped_terrain_id(base_type: int, elevation: int) -> int:
-	# 简单映射策略: 组合 base_type 和 elevation
-	# 实际项目中应从配置表或 Constants 读取
-	# 格式: base_type * 10 + elevation (假设高度不超过 10)
-	if base_type <= 0:
-		return -1
-	return base_type * 10 + elevation
 
 
 ## 设置地面层单元格
@@ -227,30 +226,33 @@ func _set_ground_cell(tile_coord: Vector2i, visual_id: int) -> void:
 	if _ground_layer == null or visual_id < 0:
 		return
 
-	# 直接设置瓦片 (BetterTerrain 插件可选，需要单独启用)
-	var source_id := 0
-	var atlas_coord := _visual_id_to_atlas(visual_id)
-	_ground_layer.set_cell(tile_coord, source_id, atlas_coord)
+	# 使用 Godot 内置地形系统
+	_ground_layer.set_cells_terrain_connect([tile_coord], 0, visual_id)
 
 
 ## 设置物体层单元格
 func _set_object_cell(tile_coord: Vector2i, layer: int, object_id: int) -> void:
-	var target_layer: TileMapLayer = null
-
-	match layer:
-		_C.Layer.DECORATION:
-			target_layer = _decoration_layer
-		_C.Layer.OBSTACLE:
-			target_layer = _obstacle_layer
-
-	if target_layer == null or object_id < 0:
+	if object_id < 0:
 		return
 
-	var source_id := 0
-	var atlas_coord := _object_id_to_atlas(object_id)
+	var target_layer: TileMapLayer = get_layer(layer)
+	if target_layer == null:
+		return
 
-	if atlas_coord != Vector2i(-1, -1):
-		target_layer.set_cell(tile_coord, source_id, atlas_coord)
+	# 从配置表获取资源信息
+	var resource_config = _C.OBJECT_RESOURCE_TABLE.get(object_id)
+	if resource_config == null:
+		return
+
+	var source_id: int = resource_config.get("source_id", -1)
+	var atlas_coord: Vector2i = resource_config.get("atlas", Vector2i(-1, -1))
+
+	# 如果 source_id 为 -1 (未配置资源)，则跳过渲染
+	if source_id < 0:
+		return
+
+	target_layer.set_cell(tile_coord, source_id, atlas_coord)
+
 
 
 ## 更新地形连接 (预留接口，BetterTerrain 插件可选)
@@ -272,21 +274,6 @@ func _visual_id_to_atlas(visual_id: int) -> Vector2i:
 	# var elevation := visual_id % 10
 	# return Vector2i(elevation, base_type)
 	return Vector2i(0, 0)  # 测试 tile
-
-
-## 将物体 ID 转换为 Atlas 坐标
-func _object_id_to_atlas(object_id: int) -> Vector2i:
-	# 根据 Constants 中定义的 ID 映射到 Atlas 坐标
-	# 实际项目中应从配置表读取
-	match object_id:
-		_C.ID_GRASS:
-			return Vector2i(0, 0)
-		_C.ID_TREE:
-			return Vector2i(1, 0)
-		_C.ID_STONE:
-			return Vector2i(2, 0)
-		_:
-			return Vector2i(-1, -1)
 
 # =============================================================================
 # 导航层方法 (Navigation Layer Methods)
@@ -347,11 +334,13 @@ func _set_navigation_cell(tile_coord: Vector2i, is_blocked: bool) -> void:
 ## @return: true 表示阻挡, false 表示可通行
 func _is_tile_blocked(local_x: int, local_y: int, data) -> bool:
 	# 检查高度: 高度为 0 表示水体或悬崖，不可通行
+	# 注意: MapGenerator 生成的 watertile 是 terrain_id=0, elevation=0
 	var elevation = data.get_elevation(local_x, local_y)
 	if elevation == 0:
 		return true
 
 	# 检查障碍层是否有物体
+	# 注意: 即使物体层不渲染 (OBJECT_SOURCE_ID = -1)，逻辑阻挡仍然有效
 	var obstacle_id = data.get_object(local_x, local_y, _C.Layer.OBSTACLE)
 	if obstacle_id > 0:
 		return true

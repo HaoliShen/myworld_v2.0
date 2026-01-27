@@ -146,17 +146,30 @@ func _sample_terrain(world_x: int, world_y: int) -> Dictionary:
 	var normalized := (noise_value + 1.0) * 0.5
 
 	# 根据噪声值返回不同地形 ID 和高度
-	# 高度与地形类型对应，便于查询
+	# 地形 ID 映射: 0=watertile, 1=height1, 2=height2
+	# 使用 Constants.HEIGHT_TO_TERRAIN_ID 进行映射
+	
+	var elevation: int = 0
 	if normalized < 0.3:
-		return { "terrain_id": 1, "elevation": 0 }   # 水/深色地面 - 高度 0
+		elevation = 0 # watertile
 	elif normalized < 0.5:
-		return { "terrain_id": 2, "elevation": 1 }   # 草地/普通地面 - 高度 1
+		elevation = 1 # height1
 	elif normalized < 0.7:
-		return { "terrain_id": 3, "elevation": 2 }   # 泥土/浅色地面 - 高度 2
+		elevation = 2 # height2
 	elif normalized < 0.85:
-		return { "terrain_id": 4, "elevation": 3 }   # 石头/高地 - 高度 3
+		elevation = 3 # height2
 	else:
-		return { "terrain_id": 5, "elevation": 4 }   # 山峰 - 高度 4
+		elevation = 4 # height2
+		
+	# 根据高度获取地形ID
+	# 使用 Constants.HEIGHT_TO_TERRAIN 进行映射
+	var terrain_config = _C.HEIGHT_TO_TERRAIN.get(mini(elevation, 2))
+	if terrain_config == null:
+		terrain_config = { "terrain_id": 2 }
+		
+	var terrain_id: int = terrain_config["terrain_id"]
+	
+	return { "terrain_id": terrain_id, "elevation": elevation }
 
 # =============================================================================
 # 内部方法 - 物体生成 (Object Generation)
@@ -198,17 +211,21 @@ func _try_place_object(chunk, local_x: int, local_y: int,
 	# 低地 (高度 1-2) - 可以生成草丛和树木
 	if elevation <= 2:
 		if normalized < grass_density:
-			# 放置草丛到装饰层
-			chunk.set_object(local_x, local_y, _C.Layer.DECORATION, _C.ID_GRASS)
+			# 放置草丛
+			var layer = _C.OBJECT_RENDER_LAYER_TABLE.get(_C.ID_GRASS, _C.Layer.DECORATION)
+			chunk.set_object(local_x, local_y, layer, _C.ID_GRASS)
 		elif secondary_normalized < tree_density:
-			# 放置树木到装饰层 (按设计文档，树是装饰层)
-			chunk.set_object(local_x, local_y, _C.Layer.DECORATION, _C.ID_TREE)
+			# 放置树木
+			var layer = _C.OBJECT_RENDER_LAYER_TABLE.get(_C.ID_TREE, _C.Layer.DECORATION)
+			chunk.set_object(local_x, local_y, layer, _C.ID_TREE)
 
 	# 高地 (高度 3+) - 可以生成石头
 	elif elevation >= 3:
 		if normalized < stone_density:
-			# 放置石头到障碍层
-			chunk.set_object(local_x, local_y, _C.Layer.OBSTACLE, _C.ID_STONE)
+			# 放置石头
+			var layer = _C.OBJECT_RENDER_LAYER_TABLE.get(_C.ID_STONE, _C.Layer.OBSTACLE)
+			chunk.set_object(local_x, local_y, layer, _C.ID_STONE)
 		elif secondary_normalized < tree_density * 0.3:
 			# 高地也有少量树木
-			chunk.set_object(local_x, local_y, _C.Layer.DECORATION, _C.ID_TREE)
+			var layer = _C.OBJECT_RENDER_LAYER_TABLE.get(_C.ID_TREE, _C.Layer.DECORATION)
+			chunk.set_object(local_x, local_y, layer, _C.ID_TREE)

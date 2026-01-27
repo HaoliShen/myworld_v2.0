@@ -40,6 +40,10 @@ var _db_connections: Dictionary = {}
 ## Key: Vector2i (Region 坐标) -> Value: int (ticks_msec)
 var _connection_timestamps: Dictionary = {}
 
+## 数据库互斥锁 (Mutex)
+## 确保多线程访问数据库连接池时的线程安全
+var _mutex: Mutex = Mutex.new()
+
 # =============================================================================
 # 生命周期 (Lifecycle)
 # =============================================================================
@@ -58,29 +62,33 @@ func _exit_tree() -> void:
 # =============================================================================
 
 ## [线程安全] 读取指定坐标的区块数据
-## 逻辑:
-## 1. 计算所属 Region 坐标和局部 Chunk 坐标
-## 2. 获取或打开对应的 .rg 数据库连接
-## 3. 执行 SELECT data FROM chunks WHERE pos_x=? AND pos_y=?
-## 4. 如果查询结果为空，返回空 PackedByteArray (表示未生成)
-## 5. 返回 BLOB 数据
 func load_chunk_blob(chunk_coord: Vector2i) -> PackedByteArray:
 	var region_coord := _MapUtils.chunk_to_region(chunk_coord)
 	var local_coord := _MapUtils.chunk_to_region_local(chunk_coord)
 
+	_mutex.lock()
 	var db = _get_db_connection(region_coord)
 	if db == null:
+		print("[RegionDatabase] load_chunk_blob: DB connection failed for region %s" % region_coord)
+		_mutex.unlock()
 		return PackedByteArray()
 
+	print("[RegionDatabase] load_chunk_blob: Querying chunk %s in region %s" % [local_coord, region_coord])
 	db.query_with_bindings(
 		"SELECT data FROM chunks WHERE pos_x = ? AND pos_y = ?",
 		[local_coord.x, local_coord.y]
 	)
+	
+	# 深拷贝结果，避免在解锁后结果被其他线程修改
+	var result = db.query_result.duplicate(true)
+	_mutex.unlock()
 
-	if db.query_result.size() == 0:
+	if result.size() == 0:
+		print("[RegionDatabase] load_chunk_blob: Chunk not found in DB")
 		return PackedByteArray()
-
-	var data = db.query_result[0]["data"]
+	
+	print("[RegionDatabase] load_chunk_blob: Chunk found, returning data")
+	var data = result[0]["data"]
 	if data is PackedByteArray:
 		return data
 
@@ -96,15 +104,19 @@ func save_chunk_blob(chunk_coord: Vector2i, data: PackedByteArray) -> void:
 	var region_coord := _MapUtils.chunk_to_region(chunk_coord)
 	var local_coord := _MapUtils.chunk_to_region_local(chunk_coord)
 
+	_mutex.lock()
 	var db = _get_db_connection(region_coord)
 	if db == null:
 		push_error("RegionDatabase: Failed to get db connection for region %s" % region_coord)
+		_mutex.unlock()
 		return
 
+	# print("[RegionDatabase] save_chunk_blob: Saving chunk %s to region %s" % [local_coord, region_coord])
 	db.query_with_bindings(
 		"INSERT OR REPLACE INTO chunks (pos_x, pos_y, data, timestamp) VALUES (?, ?, ?, ?)",
 		[local_coord.x, local_coord.y, data, Time.get_ticks_msec()]
 	)
+	_mutex.unlock()
 
 
 ## [维护] 关闭所有打开的数据库连接 (用于退出游戏或切换存档)
@@ -186,6 +198,7 @@ func _get_db_connection(region_coord: Vector2i):
 
 	# 打开新连接
 	var db_path := _get_region_file_path(region_coord)
+	print("[RegionDatabase] _get_db_connection: Opening DB at %s" % db_path)
 
 	# 确保目录存在
 	SaveSystem.ensure_directory_exists(db_path.get_base_dir())

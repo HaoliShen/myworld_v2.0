@@ -321,8 +321,8 @@ func _execute_build(tile_pos: Vector2i, blueprint_id: int) -> void:
 ## 根据建筑 ID 获取目标层
 func _get_blueprint_layer(blueprint_id: int) -> int:
 	# 从 Constants 的映射表获取层级
-	if _C.OBJECT_LAYER_MAPPING.has(blueprint_id):
-		return _C.OBJECT_LAYER_MAPPING[blueprint_id]
+	if _C.OBJECT_RENDER_LAYER_TABLE.has(blueprint_id):
+		return _C.OBJECT_RENDER_LAYER_TABLE[blueprint_id]
 	# 默认放置到装饰层
 	return _C.Layer.DECORATION
 

@@ -59,7 +59,15 @@ func _load_config() -> void:
 	if FileAccess.file_exists(config_path):
 		var err := _config.load(config_path)
 		if err == OK:
-			save_path = _config.get_value("paths", "save_path", _C.DEFAULT_SAVE_PATH)
+			# 优先使用硬编码路径进行调试
+			var debug_path = "D:/mygames_all_ver/mwv2.0_save"
+			save_path = _config.get_value("paths", "save_path", debug_path)
+			
+			# 如果配置中的路径与调试路径不一致，更新它
+			if save_path != debug_path:
+				save_path = debug_path
+				save_config()
+				
 			config_loaded.emit()
 		else:
 			push_warning("SaveSystem: Failed to load config file, using defaults")
@@ -73,6 +81,7 @@ func _create_default_config() -> void:
 	_config = ConfigFile.new()
 	_config.set_value("paths", "save_path", _C.DEFAULT_SAVE_PATH)
 	save_config()
+	save_path = _C.DEFAULT_SAVE_PATH
 
 
 ## 保存配置文件

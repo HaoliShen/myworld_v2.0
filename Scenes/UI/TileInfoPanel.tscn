@@ -49,3 +49,7 @@ text = "None"
 [node name="CoordsLabel" type="Label" parent="PanelContainer/MarginContainer/VBoxContainer"]
 layout_mode = 2
 text = "(0, 0)"
+
+[node name="GroundIdLabel" type="Label" parent="PanelContainer/MarginContainer/VBoxContainer"]
+layout_mode = 2
+text = "Ground ID: -"

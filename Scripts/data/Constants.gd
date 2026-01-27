@@ -11,9 +11,9 @@ extends RefCounted
 # 基础度量衡 (Basic Metrics)
 # =============================================================================
 
-## 单个瓦片的像素大小 (32x32)
+## 单个瓦片的像素大小 (16x16)
 ## 用于: MapUtils 坐标转换, InputManager 鼠标定位
-const TILE_SIZE: int = 32
+const TILE_SIZE: int = 16
 
 ## 一个区块包含的瓦片数量 (32x32 tiles = 1024x1024 pixels)
 ## 用于: ChunkData 数据结构大小, RegionDatabase 文件索引计算
@@ -46,25 +46,53 @@ enum Layer {
 }
 
 # =============================================================================
-# 数据 ID 定义 (Data ID Definitions)
+# 地面配置 (Ground Configuration)
 # =============================================================================
 
-## 建议在实际开发中建立专门的 ItemID 表，这里仅作演示
+## 地面 TileSet 源 ID
+const GROUND_SOURCE_ID: int = 2
+
+## 地面 Terrain Set 索引
+const GROUND_TERRAIN_SET: int = 0
+
+## 地形高度对应的配置(terrainset中的terrain配置)
+## Key: Elevation (int) -> Value: Dictionary { "terrain_id": int }
+## 用于: MapGenerator 生成地形, GlobalMapController 渲染
+const HEIGHT_TO_TERRAIN: Dictionary = {
+	0: { "terrain_id": 0 }, # Watertile
+	1: { "terrain_id": 1 }, # Height1
+	2: { "terrain_id": 2 }, # Height2 (and above)
+}
+
+# =============================================================================
+# 物体配置 (Object Configuration)
+# =============================================================================
+
+## 物体 ID 常量 (便于代码引用)
 const ID_GRASS: int = 200
 const ID_TREE: int = 300
 const ID_STONE: int = 400
 
-# =============================================================================
-# 渲染映射表 (Render Layer Mapping)
-# =============================================================================
+## 物体 ID 表 (Name -> ID)
+const OBJECT_ID_TABLE: Dictionary = {
+	"GRASS": ID_GRASS,
+	"TREE": ID_TREE,
+	"STONE": ID_STONE
+}
 
-## 核心作用: 定义一个 ID 应该被渲染到哪一层。
-## 用于: GlobalMapController 在渲染 ChunkData 时进行分发。
-## Key: Tile ID (int) -> Value: Layer Enum (int)
-const OBJECT_LAYER_MAPPING: Dictionary = {
+## 物体资源配置表 (ID -> Resource Config)
+## source_id: -1 表示暂时不渲染 (用于开发阶段或无资源物体)
+const OBJECT_RESOURCE_TABLE: Dictionary = {
+	ID_GRASS: { "source_id": 2, "atlas": Vector2i(0, 0) },
+	ID_TREE:  { "source_id": 2, "atlas": Vector2i(1, 0) },
+	ID_STONE: { "source_id": 2, "atlas": Vector2i(2, 0) },
+}
+
+## 物体渲染层级表 (ID -> Layer Enum)
+const OBJECT_RENDER_LAYER_TABLE: Dictionary = {
 	ID_GRASS: Layer.DECORATION,
-	ID_TREE: Layer.DECORATION,
-	ID_STONE:  Layer.OBSTACLE
+	ID_TREE:  Layer.DECORATION,
+	ID_STONE: Layer.OBSTACLE
 }
 
 # =============================================================================
@@ -151,7 +179,8 @@ const INTERACTION_TILE_RANGE: float = 1.5
 # =============================================================================
 
 ## 默认存档路径
-const DEFAULT_SAVE_PATH: String = "user://saves/"
+# const DEFAULT_SAVE_PATH: String = "user://saves/"
+const DEFAULT_SAVE_PATH: String = "D:/mygames_all_ver/mwv2.0_save/"
 
 ## 配置文件名
 const CONFIG_FILE_NAME: String = "config.ini"

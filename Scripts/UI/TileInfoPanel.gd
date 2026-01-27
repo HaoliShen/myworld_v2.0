@@ -22,10 +22,13 @@ const _MapUtils = preload("res://Scripts/data/MapUtils.gd")
 @onready var _title_label: Label = $PanelContainer/MarginContainer/VBoxContainer/TitleLabel
 @onready var _info_label: Label = $PanelContainer/MarginContainer/VBoxContainer/InfoLabel
 @onready var _coords_label: Label = $PanelContainer/MarginContainer/VBoxContainer/CoordsLabel
+@onready var _ground_id_label: Label = $PanelContainer/MarginContainer/VBoxContainer/GroundIdLabel
 
 # =============================================================================
 # 内部变量 (Internal Variables)
 # =============================================================================
+
+var _world_manager = null
 
 ## 当前选中类型
 enum SelectionType { NONE, ENTITY, TILE }
@@ -45,6 +48,7 @@ var _selected_layer: int = 0
 # =============================================================================
 
 func _ready() -> void:
+	_world_manager = get_node_or_null("/root/World/Managers/WorldManager")
 	_connect_signals()
 	_hide_panel()
 
@@ -128,6 +132,17 @@ func _show_tile_info() -> void:
 		_coords_label.text = "(%d, %d)" % [
 			_selected_tile_coord.x, _selected_tile_coord.y
 		]
+
+	if _ground_id_label:
+		var ground_id = -1
+		if _world_manager:
+			var chunk_coord = _MapUtils.tile_to_chunk(_selected_tile_coord)
+			var chunk_data = _world_manager.get_chunk_data(chunk_coord)
+			if chunk_data:
+				var local_coord = _MapUtils.tile_to_local(_selected_tile_coord)
+				ground_id = chunk_data.get_terrain(local_coord.x, local_coord.y)
+		
+		_ground_id_label.text = "Ground ID: %d" % ground_id
 
 
 func _hide_panel() -> void:

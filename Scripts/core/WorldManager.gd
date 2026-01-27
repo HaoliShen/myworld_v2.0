@@ -92,6 +92,13 @@ var _is_initialized: bool = false
 ## 世界种子
 var _world_seed: int = 0
 
+## [优化] 区块渲染队列
+## 用于分帧渲染，避免一帧内渲染过多区块导致卡顿
+var _chunk_render_queue: Array[Vector2i] = []
+
+## [优化] 每帧最大渲染区块数
+const MAX_CHUNKS_PER_FRAME: int = 1
+
 # =============================================================================
 # 预加载资源 (Preloaded Resources)
 # =============================================================================
@@ -118,6 +125,25 @@ func _ready() -> void:
 func _process(_delta: float) -> void:
 	if not _is_initialized:
 		return
+
+	# [优化] 处理渲染队列
+	if not _chunk_render_queue.is_empty():
+		var processed_count = 0
+		while not _chunk_render_queue.is_empty() and processed_count < MAX_CHUNKS_PER_FRAME:
+			var coord = _chunk_render_queue.pop_front()
+			
+			# 再次检查数据是否存在 (防止队列等待期间被卸载)
+			if loaded_data.has(coord):
+				# print("[WorldManager] Processing render queue for chunk: %s" % coord)
+				_render_chunk_visuals(coord, loaded_data[coord])
+				
+				# 如果需要生成逻辑，也在渲染后立即尝试
+				# 注意: 这里假设如果进入了渲染队列，且符合 Active 条件，就应该生成逻辑
+				var distance := _MapUtils.chebyshev_distance(coord, _player_chunk)
+				if distance <= RADIUS_ACTIVE:
+					_spawn_chunk_logic(coord)
+					
+			processed_count += 1
 
 	# 定期检查区块加载状态 (可以考虑降低频率或响应信号触发)
 	# 当前设计: 每帧检查，实际项目中可能需要优化
@@ -337,8 +363,10 @@ func update_chunks(player_chunk_coord: Vector2i) -> void:
 	# 渲染 (需要数据已加载)
 	for coord in chunks_to_render:
 		if loaded_data.has(coord):
-			print("[WorldManager] Rendering chunk: %s" % coord)
-			_render_chunk_visuals(coord, loaded_data[coord])
+			# [优化] 加入渲染队列
+			if not _chunk_render_queue.has(coord):
+				print("[WorldManager] Queueing chunk for render: %s" % coord)
+				_chunk_render_queue.append(coord)
 
 	# 生成逻辑节点 (需要已渲染)
 	for coord in chunks_to_spawn_logic:
@@ -458,9 +486,7 @@ func get_world_seed() -> int:
 ## [异步回调] 请求加载区块数据
 ## 逻辑:
 ## 1. 检查 loaded_data 中是否已存在
-## 2. 若不存在，向 WorkerThreadPool 提交任务：
-##    - 先尝试调用 RegionDatabase.load_chunk_blob 读取存档
-##    - 若存档不存在，调用 MapGenerator.generate_chunk_data 生成新数据
+## 2. 若不存在，向 WorkerThreadPool 提交任务
 ## 3. 标记 _pending_loads 防止重复提交
 func _request_chunk_data(coord: Vector2i) -> void:
 	# 防止重复请求
@@ -469,15 +495,27 @@ func _request_chunk_data(coord: Vector2i) -> void:
 
 	_pending_loads[coord] = true
 
-	# 注意: 当前使用同步加载，实际项目可使用 WorkerThreadPool 实现异步
-	# 同步加载实现:
+	# 使用 WorkerThreadPool 进行后台加载
+	WorkerThreadPool.add_task(_load_chunk_task.bind(coord))
+
+
+## [线程任务] 后台加载/生成区块数据
+## @param coord: 区块坐标
+func _load_chunk_task(coord: Vector2i) -> void:
+	# print("[WorldManager] _load_chunk_task: Started for %s in thread %s" % [coord, OS.get_thread_caller_id()])
+	
+	# 1. 尝试从数据库加载
 	var chunk = RegionDatabase.load_chunk(coord)
 
+	# 2. 如果数据库中不存在，则生成新数据
+	# MapGenerator.generate_chunk 是纯计算且无副作用的，可以在多线程下安全运行
 	if chunk == null:
-		# 数据库中不存在，生成新数据
+		# print("[WorldManager] _load_chunk_task: Generating new chunk for %s" % coord)
 		chunk = map_generator.generate_chunk(coord)
+	# else:
+	# 	print("[WorldManager] _load_chunk_task: Loaded chunk from DB for %s" % coord)
 
-	# 通过 call_deferred 确保在主线程处理
+	# 3. 返回主线程处理结果
 	call_deferred("_on_chunk_data_ready", coord, chunk)
 
 
@@ -508,13 +546,10 @@ func _on_chunk_data_ready(coord: Vector2i, data) -> void:
 	# 4. 重新评估目标状态
 	var distance := _MapUtils.chebyshev_distance(coord, _player_chunk)
 
-	if distance <= RADIUS_ACTIVE:
-		# Active 状态: 渲染 + 生成逻辑
-		_render_chunk_visuals(coord, data)
-		_spawn_chunk_logic(coord)
-	elif distance <= RADIUS_READY:
-		# Ready 状态: 仅渲染
-		_render_chunk_visuals(coord, data)
+	if distance <= RADIUS_READY:
+		# [优化] 不再直接调用渲染，而是加入队列
+		if not _chunk_render_queue.has(coord) and not _is_chunk_rendered(coord):
+			_chunk_render_queue.append(coord)
 	# else: Data 状态，数据已在内存中，无需额外操作
 
 

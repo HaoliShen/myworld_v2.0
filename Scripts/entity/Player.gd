@@ -325,6 +325,9 @@ func _process_movement(delta: float) -> void:
 	# 使用导航代理的避障功能
 	if _nav_agent.avoidance_enabled:
 		_nav_agent.velocity = velocity
+	
+	# [修复] 确保每帧更新动画状态，防止因速度过小或方向未改变导致动画停滞
+	_play_movement_animation()
 
 
 func _on_velocity_computed(safe_velocity: Vector2) -> void:
@@ -444,36 +447,39 @@ func _update_sprite_direction() -> void:
 	if _sprite == null:
 		return
 
-	# 根据面朝方向翻转精灵
-	if _facing_direction.x < -0.1:
+	# 根据水平速度方向翻转精灵
+	if velocity.x < -0.1:
 		_sprite.flip_h = true
-	elif _facing_direction.x > 0.1:
+	elif velocity.x > 0.1:
 		_sprite.flip_h = false
 
-	# 播放对应方向的动画
+	# 播放对应动画
 	_play_movement_animation()
 
 
 func _play_movement_animation() -> void:
-	if _anim_player == null:
+	if _sprite == null:
 		return
 
-	var anim_name := ""
-	match _current_state:
-		"Moving":
-			if absf(_facing_direction.y) > absf(_facing_direction.x):
-				anim_name = "walk_down" if _facing_direction.y > 0 else "walk_up"
-			else:
-				anim_name = "walk_side"
-		"Idle":
-			if absf(_facing_direction.y) > absf(_facing_direction.x):
-				anim_name = "idle_down" if _facing_direction.y > 0 else "idle_up"
-			else:
-				anim_name = "idle_side"
+	var anim_name := "idle"
+	# [修复] 改进移动状态判断
+	# 优先使用状态机状态判断
+	if _current_state == "Moving":
+		anim_name = "walk"
+	else:
+		# 兜底：只要有移动意图 (导航未完成且目标未到达) 或 实际速度大于阈值，都视为移动中
+		var is_moving := velocity.length() > 0.1
+		if _nav_agent:
+			if not _nav_agent.is_navigation_finished() and not _nav_agent.is_target_reached():
+				is_moving = true
 
-	if anim_name != "" and _anim_player.has_animation(anim_name):
-		if _anim_player.current_animation != anim_name:
-			_anim_player.play(anim_name)
+		if is_moving:
+			anim_name = "walk"
+		else:
+			anim_name = "idle"
+
+	if _sprite.animation != anim_name or not _sprite.is_playing():
+		_sprite.play(anim_name)
 
 
 # =============================================================================
