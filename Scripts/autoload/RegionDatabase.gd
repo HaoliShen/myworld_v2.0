@@ -111,7 +111,7 @@ func save_chunk_blob(chunk_coord: Vector2i, data: PackedByteArray) -> void:
 		_mutex.unlock()
 		return
 
-	# print("[RegionDatabase] save_chunk_blob: Saving chunk %s to region %s" % [local_coord, region_coord])
+	print("[RegionDatabase] save_chunk_blob: Saving chunk %s to region %s" % [local_coord, region_coord])
 	db.query_with_bindings(
 		"INSERT OR REPLACE INTO chunks (pos_x, pos_y, data, timestamp) VALUES (?, ?, ?, ?)",
 		[local_coord.x, local_coord.y, data, Time.get_ticks_msec()]

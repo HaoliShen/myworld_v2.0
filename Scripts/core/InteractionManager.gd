@@ -184,35 +184,35 @@ func _handle_normal_primary_click(global_pos: Vector2) -> void:
 		# 2. 击中实体 - 选中它
 		if hit_entity != selected_entity:
 			_select_entity(hit_entity)
-		print("selected")
+		
 	else:
 		# 3. 击中空地或 TileMap
 		if _is_player_selected():
 			# 检查是否在交互范围内 (玩家所在瓦片九宫格)
-			print("1")
+			
 			if _is_within_interaction_range(global_pos):
 				# 在范围内：执行交互
 				_player.command_interact(global_pos)
-				print("2")
+				
 			else:
 				# 超出范围：取消选中
 				_deselect()
-				print("3")
+				
 		else:
 			# 选择瓦片
 			var tile_coord := _MapUtils.world_to_tile(global_pos)
 			_select_tile(tile_coord)
-			print("4")
+			
 
 
 ## 处理普通模式下的右键点击
 func _handle_normal_secondary_click(global_pos: Vector2) -> void:
 	if _is_player_selected():
 		# 命令玩家移动到目标位置
-		print("move selected")
+		
 		_player.command_move_to(global_pos)
 		# 发送命令信号 (用于生成地面点击特效)
-		print(_player)
+		
 		SignalBus.command_issued.emit("move", global_pos)
 
 

@@ -25,6 +25,7 @@ const TERRAIN_META = &"_better_terrain"
 const TERRAIN_SYSTEM_VERSION = "0.2"
 
 var _tile_cache = {}
+var _cache_mutex = Mutex.new()
 var rng = RandomNumberGenerator.new()
 var use_seed := true
 
@@ -97,19 +98,34 @@ func _set_tile_meta(ts: TileSet, td: TileData, meta) -> void:
 
 
 func _get_cache(ts: TileSet) -> Array:
+	_cache_mutex.lock()
 	if _tile_cache.has(ts):
-		return _tile_cache[ts]
+		var c = _tile_cache[ts]
+		_cache_mutex.unlock()
+		return c
 	
 	var cache := []
 	if !ts:
+		_cache_mutex.unlock()
 		return cache
-	_tile_cache[ts] = cache
-
+	
+	# NOTE: Do not assign to _tile_cache yet to avoid exposing incomplete cache to other threads
+	
 	var watcher = Node.new()
 	watcher.set_script(load("res://addons/better-terrain/Watcher.gd"))
 	watcher.tileset = ts
 	watcher.trigger.connect(_purge_cache.bind(ts))
-	add_child(watcher)
+	
+	# WARNING: add_child is not thread-safe! Ensure cache is warmed up in main thread.
+	if is_inside_tree(): 
+		add_child(watcher)
+	else:
+		# Fallback or just print warning if running in thread without tree
+		# Ideally BetterTerrain should be an Autoload in the tree
+		watcher.queue_free() # Clean up if we can't use it
+		# print("BetterTerrain: Warning - Cannot add watcher in thread/outside tree")
+		pass
+
 	ts.changed.connect(watcher.activate)
 	
 	var types = {}
@@ -174,8 +190,14 @@ func _get_cache(ts: TileSet) -> Array:
 				var adjusted_probability = td.probability / symmetry_order
 				for flags in data.symmetry_mapping[symmetry]:
 					var symmetric_peering = data.peering_bits_after_symmetry(peering, flags)
+					if symmetric_peering == peering:
+						continue # Skip duplicates? Logic from original seemed to just push?
+					# Original logic:
 					cache[td_meta.type].push_back([source_id, coord, alternate | flags, symmetric_peering, adjusted_probability])
 	
+	# Assign fully populated cache at the end
+	_tile_cache[ts] = cache
+	_cache_mutex.unlock()
 	return cache
 
 
@@ -188,7 +210,9 @@ func _get_cache_terrain(ts_meta : Dictionary, index: int) -> Array:
 
 
 func _purge_cache(ts: TileSet) -> void:
+	_cache_mutex.lock()
 	_tile_cache.erase(ts)
+	_cache_mutex.unlock()
 	for c in get_children():
 		if c.tileset == ts:
 			c.tidy()

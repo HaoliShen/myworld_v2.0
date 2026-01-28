@@ -50,4 +50,3 @@ func _exit_tree() -> void:
 	pass
 #	if _map_controller and is_instance_valid(_map_controller):
 #		_map_controller.clear_chunk(coord)
-

@@ -36,7 +36,7 @@ var world_seed: int = 0
 # =============================================================================
 # 内部变量 (Internal Variables)
 # =============================================================================
-
+#读取出来的配置文件
 var _config: ConfigFile = null
 
 # =============================================================================
@@ -51,7 +51,7 @@ func _ready() -> void:
 # 配置文件操作 (Config File Operations)
 # =============================================================================
 
-## 加载配置文件
+## 从config path加载配置文件到_config（目前强制使用了debugpath）
 func _load_config() -> void:
 	_config = ConfigFile.new()
 	var config_path := _get_config_path()
@@ -63,7 +63,7 @@ func _load_config() -> void:
 			var debug_path = "D:/mygames_all_ver/mwv2.0_save"
 			save_path = _config.get_value("paths", "save_path", debug_path)
 			
-			# 如果配置中的路径与调试路径不一致，更新它
+			# 如果配置中的路径与调试路径不一致，强制更新为debugpath
 			if save_path != debug_path:
 				save_path = debug_path
 				save_config()

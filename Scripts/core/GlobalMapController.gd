@@ -14,6 +14,7 @@ extends Node2D
 # 预加载依赖的类
 const _C = preload("res://Scripts/data/Constants.gd")
 const _MapUtils = preload("res://Scripts/data/MapUtils.gd")
+const _ShadowChunkRenderer = preload("res://Scripts/components/ShadowChunkRenderer.gd")
 
 # =============================================================================
 # 节点引用 (Node References)
@@ -86,6 +87,8 @@ func _initialize() -> void:
 ## @param data: 包含该区块所有信息的纯数据对象
 func render_chunk(coord: Vector2i, data) -> void:
 	var t_start = Time.get_ticks_usec()
+	print("[DEBUG] render_chunk START for chunk %s at %d us" % [coord, t_start])
+	
 	if not _is_initialized:
 		push_error("GlobalMapController: Not initialized")
 		return
@@ -116,19 +119,35 @@ func render_chunk(coord: Vector2i, data) -> void:
 			ground_cells.append(tile_coord)
 	
 	var t_ground_prep = Time.get_ticks_usec()
+	print("[DEBUG] render_chunk - Ground prep completed: %d us, terrain types: %d, total cells: %d" % [
+		t_ground_prep - t_start, terrain_cells.size(), ground_cells.size()
+	])
 
 	# 批量应用地形连接
 	# 使用 BetterTerrain 插件 API
 	var time=[]
+	var terrain_id_list = []
 	
 	for t_id in terrain_cells:
 		if not terrain_cells[t_id].is_empty():
+			var t_before = Time.get_ticks_usec()
+			print("[DEBUG] render_chunk - Calling BetterTerrain.set_cells for terrain_id %d with %d cells" % [t_id, terrain_cells[t_id].size()])
 			# _ground_layer.set_cells_terrain_connect(terrain_cells[t_id], _C.GROUND_TERRAIN_SET, t_id, false)
 			# 替换为 BetterTerrain.set_cells
+			_ShadowChunkRenderer.shared_mutex.lock()
 			BetterTerrain.set_cells(_ground_layer, terrain_cells[t_id], t_id)
-			time.append(Time.get_ticks_usec())
+			_ShadowChunkRenderer.shared_mutex.unlock()
+			var t_after = Time.get_ticks_usec()
+			time.append(t_after)
+			terrain_id_list.append(t_id)
+			print("[DEBUG] render_chunk - BetterTerrain.set_cells for terrain_id %d took %d us" % [t_id, t_after - t_before])
+
+	var t_bt_done = Time.get_ticks_usec()
+	print("[DEBUG] render_chunk - All BetterTerrain.set_cells completed: %d us" % [t_bt_done - t_ground_prep])
 
 	# 2. 渲染物体层 (Layer 1 & 2)
+	var object_count = data.object_map.size()
+	print("[DEBUG] render_chunk - Starting object rendering, count: %d" % object_count)
 	for packed_key in data.object_map:
 		var unpacked := _MapUtils.unpack_coord(packed_key)
 		var local_x := unpacked.x
@@ -140,24 +159,130 @@ func render_chunk(coord: Vector2i, data) -> void:
 		_set_object_cell(tile_coord, layer, object_id)
 
 	var t_obj = Time.get_ticks_usec()
+	print("[DEBUG] render_chunk - Object rendering completed: %d us" % [t_obj - t_bt_done])
 
 	# 3. 触发 BetterTerrain 更新地形连接
+	print("[DEBUG] render_chunk - Calling _update_terrain_connections with %d cells" % ground_cells.size())
 	_update_terrain_connections(ground_cells)
 	
 	var t_conn = Time.get_ticks_usec()
+	print("[DEBUG] render_chunk - Terrain connections update completed: %d us" % [t_conn - t_obj])
 	
 	# 4. 更新导航层
+	print("[DEBUG] render_chunk - Starting navigation update")
 	_update_chunk_navigation(coord, data)
 	
 	var t_nav = Time.get_ticks_usec()
+	print("[DEBUG] render_chunk - Navigation update completed: %d us" % [t_nav - t_conn])
 
-	print("[Profile] render_chunk %s Total: %d us | Prep: %d | Ground0: %d | ground1: %d | zero: %d | Nav: %d" % [
-		coord, t_nav - t_start, 
+	var total_time = t_nav - t_start
+	print("[Profile] render_chunk %s Total: %d us (%.2f ms) | Prep: %d | BetterTerrain: %d | Objects: %d | Connections: %d | Nav: %d" % [
+		coord, total_time, total_time / 1000.0,
 		t_ground_prep - t_start,
-		time[0] - t_ground_prep,
-		time[1]-time[0],
-		t_conn-t_obj,
+		t_bt_done - t_ground_prep,
+		t_obj - t_bt_done,
+		t_conn - t_obj,
 		t_nav - t_conn
+	])
+	print("[DEBUG] render_chunk END for chunk %s\n" % coord)
+
+
+## [新增] 从影子图层快速复制数据到主图层
+## 职责:
+## 1. 从预计算好的影子TileMapLayer批量复制瓦片数据
+## 2. 渲染物体层（装饰和障碍）
+## 3. 更新导航层
+## @param shadow_data: 影子渲染器返回的数据字典
+func apply_shadow_chunk(shadow_data: Dictionary) -> void:
+	var t_start = Time.get_ticks_usec()
+	var coord: Vector2i = shadow_data["coord"]
+	var shadow_ground: TileMapLayer = shadow_data["shadow_ground"]
+	var base_tile: Vector2i = shadow_data["base_tile"]
+	
+	print("[DEBUG] apply_shadow_chunk START for chunk %s" % coord)
+	
+	var used_cells := shadow_ground.get_used_cells()
+	print("[DEBUG] apply_shadow_chunk - Copying %d cells from shadow layer" % used_cells.size())
+	
+	var t_copy_start = Time.get_ticks_usec()
+	for cell in used_cells:
+		var source_id := shadow_ground.get_cell_source_id(cell)
+		var atlas_coords := shadow_ground.get_cell_atlas_coords(cell)
+		var alternative := shadow_ground.get_cell_alternative_tile(cell)
+		_ground_layer.set_cell(cell, source_id, atlas_coords, alternative)
+	
+	var t_copy_end = Time.get_ticks_usec()
+	print("[DEBUG] apply_shadow_chunk - Cell copy completed in %d us (%.2f ms)" % [t_copy_end - t_copy_start, (t_copy_end - t_copy_start) / 1000.0])
+	
+	var object_count = shadow_data["object_data"].size()
+	print("[DEBUG] apply_shadow_chunk - Rendering %d objects" % object_count)
+	for packed_key in shadow_data["object_data"]:
+		var unpacked := _MapUtils.unpack_coord(packed_key)
+		var local_x := unpacked.x
+		var local_y := unpacked.y
+		var layer := unpacked.z
+		var object_id: int = shadow_data["object_data"][packed_key]
+		
+		var tile_coord := base_tile + Vector2i(local_x, local_y)
+		_set_object_cell(tile_coord, layer, object_id)
+	
+	var t_obj_end = Time.get_ticks_usec()
+	print("[DEBUG] apply_shadow_chunk - Object rendering completed in %d us" % [t_obj_end - t_copy_end])
+	
+	var chunk_data = shadow_data.get("chunk_data")
+	if chunk_data:
+		_update_chunk_navigation(coord, chunk_data)
+	
+	var t_nav_end = Time.get_ticks_usec()
+	
+	var total_time = t_nav_end - t_start
+	print("[Profile] apply_shadow_chunk %s Total: %d us (%.2f ms) | Copy: %d | Objects: %d | Nav: %d" % [
+		coord, total_time, total_time / 1000.0,
+		t_copy_end - t_copy_start,
+		t_obj_end - t_copy_end,
+		t_nav_end - t_obj_end
+	])
+	print("[DEBUG] apply_shadow_chunk END for chunk %s\n" % coord)
+
+
+## [新增] 批量更新区块边界的地形连接
+## 职责:
+## 只更新指定区块的边界瓦片，而不是整个区块，大幅减少计算量
+## @param chunk_coords: 需要更新边界的区块坐标数组
+func update_chunk_boundaries(chunk_coords: Array[Vector2i]) -> void:
+	if chunk_coords.is_empty():
+		return
+	
+	var t_start = Time.get_ticks_usec()
+	var boundary_cells: Array[Vector2i] = []
+	
+	print("[DEBUG] update_chunk_boundaries - Processing %d chunks" % chunk_coords.size())
+	
+	for coord in chunk_coords:
+		var base_tile := Vector2i(
+			coord.x * _C.CHUNK_SIZE,
+			coord.y * _C.CHUNK_SIZE
+		)
+		
+		for x in range(_C.CHUNK_SIZE):
+			boundary_cells.append(base_tile + Vector2i(x, 0))
+			boundary_cells.append(base_tile + Vector2i(x, _C.CHUNK_SIZE - 1))
+		
+		for y in range(1, _C.CHUNK_SIZE - 1):
+			boundary_cells.append(base_tile + Vector2i(0, y))
+			boundary_cells.append(base_tile + Vector2i(_C.CHUNK_SIZE - 1, y))
+	
+	var t_prep = Time.get_ticks_usec()
+	print("[DEBUG] update_chunk_boundaries - Collected %d boundary cells in %d us" % [boundary_cells.size(), t_prep - t_start])
+	
+	if not boundary_cells.is_empty():
+		_ShadowChunkRenderer.shared_mutex.lock()
+		BetterTerrain.update_terrain_cells(_ground_layer, boundary_cells)
+		_ShadowChunkRenderer.shared_mutex.unlock()
+	
+	var t_end = Time.get_ticks_usec()
+	print("[Profile] update_chunk_boundaries - %d chunks, %d cells in %d us (%.2f ms)" % [
+		chunk_coords.size(), boundary_cells.size(), t_end - t_start, (t_end - t_start) / 1000.0
 	])
 
 
@@ -168,6 +293,7 @@ func render_chunk(coord: Vector2i, data) -> void:
 ## 3. 触发 BetterTerrain 更新，确保移除后邻接区块的边缘纹理正确闭合
 ## @param coord: 区块坐标
 func clear_chunk(coord: Vector2i) -> void:
+	var t_start = Time.get_ticks_usec()
 	if not _is_initialized:
 		return
 
@@ -179,6 +305,8 @@ func clear_chunk(coord: Vector2i) -> void:
 	var cleared_cells: Array[Vector2i] = []
 
 	# 清除所有层的瓦片
+	# 优化：不要逐个 erase，尝试批量操作或者只收集坐标最后一起更新
+	# 目前 Godot 没有 erase_cells，只能循环
 	for local_y in range(_C.CHUNK_SIZE):
 		for local_x in range(_C.CHUNK_SIZE):
 			var tile_coord := base_tile + Vector2i(local_x, local_y)
@@ -193,9 +321,13 @@ func clear_chunk(coord: Vector2i) -> void:
 				_navigation_layer.erase_cell(tile_coord)
 
 			cleared_cells.append(tile_coord)
-
+	
+	var t_erase = Time.get_ticks_usec()
 	# 更新邻接区块的边缘连接
-	_update_terrain_connections(cleared_cells)
+	#_update_terrain_connections(cleared_cells)
+	var t_conn = Time.get_ticks_usec()
+	
+	print("[DEBUG] clear_chunk %s Total: %d us | Erase: %d | Connect: %d" % [coord, t_conn - t_start, t_erase - t_start, t_conn - t_erase])
 
 # =============================================================================
 # 单点操作 (Single Operations) - 用于玩家交互
@@ -283,20 +415,16 @@ func _update_terrain_connections(_cells: Array[Vector2i]) -> void:
 	# BetterTerrain 插件未启用时，此函数为空操作
 	# 如需启用 BetterTerrain 自动连接功能，请安装插件并取消注释以下代码:
 	if not _cells.is_empty():
+		var t_before = Time.get_ticks_usec()
+		print("[DEBUG] _update_terrain_connections - Calling BetterTerrain.update_terrain_cells with %d cells" % _cells.size())
+		_ShadowChunkRenderer.shared_mutex.lock()
 		BetterTerrain.update_terrain_cells(_ground_layer, _cells)
+		_ShadowChunkRenderer.shared_mutex.unlock()
+		var t_after = Time.get_ticks_usec()
+		print("[DEBUG] _update_terrain_connections - BetterTerrain.update_terrain_cells took %d us (%.2f ms)" % [t_after - t_before, (t_after - t_before) / 1000.0])
 	pass
 
 
-## 将视觉 ID 转换为 Atlas 坐标 (回退方案)
-func _visual_id_to_atlas(visual_id: int) -> Vector2i:
-	# 测试模式: 所有地形都使用同一个 tile (0, 0)
-	# TODO: 实际项目中应根据 visual_id 映射到正确的 Atlas 坐标
-	# 简单映射: visual_id = base_type * 10 + elevation
-	# Atlas 坐标: x = elevation, y = base_type
-	# var base_type := visual_id / 10
-	# var elevation := visual_id % 10
-	# return Vector2i(elevation, base_type)
-	return Vector2i(0, 0)  # 测试 tile
 
 # =============================================================================
 # 导航层方法 (Navigation Layer Methods)
@@ -308,7 +436,7 @@ func _visual_id_to_atlas(visual_id: int) -> Vector2i:
 func _update_chunk_navigation(coord: Vector2i, data) -> void:
 	if _navigation_layer == null:
 		return
-
+	
 	var base_tile := Vector2i(
 		coord.x * _C.CHUNK_SIZE,
 		coord.y * _C.CHUNK_SIZE
@@ -318,10 +446,12 @@ func _update_chunk_navigation(coord: Vector2i, data) -> void:
 		for local_x in range(_C.CHUNK_SIZE):
 			var tile_coord := base_tile + Vector2i(local_x, local_y)
 
-			# 判断是否可通行
-			var is_blocked := _is_tile_blocked(local_x, local_y, data)
-			_set_navigation_cell(tile_coord, is_blocked)
-
+			# 判断是否可通行，这里仅设置了可通行地块
+			if not _is_tile_blocked(local_x, local_y, data):
+				_navigation_layer.set_cell(tile_coord, NAV_SOURCE_ID, NAV_TILE_PASSABLE)
+	
+	
+	
 
 ## 更新单个导航格 (用于实时交互)
 ## @param tile_coord: 瓦片坐标

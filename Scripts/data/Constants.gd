@@ -110,15 +110,15 @@ const DRAG_THRESHOLD: float = 10.0
 
 ## Level 1: 活跃层 - 加载/卸载半径 (区块)
 const ACTIVE_LOAD_RADIUS: int = 1
-const ACTIVE_UNLOAD_RADIUS: int = 2
+const ACTIVE_UNLOAD_RADIUS: int = 1
 
 ## Level 2: 就绪层 - 加载/卸载半径 (区块)
 const READY_LOAD_RADIUS: int = 2
-const READY_UNLOAD_RADIUS: int = 3
+const READY_UNLOAD_RADIUS: int = 2
 
 ## Level 3: 数据层 - 加载/卸载半径 (区块)
 const DATA_LOAD_RADIUS: int = 8
-const DATA_UNLOAD_RADIUS: int = 10
+const DATA_UNLOAD_RADIUS: int = 8
 
 # =============================================================================
 # 高度系统 (Elevation System)

@@ -1,9 +1,9 @@
 63f7b34db8d8cdea90c76aacccf841ec
-::res://::1769512829
+::res://::1769568710
 icon.svg::CompressedTexture2D::7980556818781264809::1768645110::1768811145::1::::<><><>0<>0<>608c384b7084e594739da47c7113d5be<>res://.godot/imported/icon.svg-218a8f2b3041327d8a5756f3a245f83b.ctex::
 ::res://addons/::1769130606
 ::res://addons/better-terrain/::1768811145
-BetterTerrain.gd::GDScript::3244802016330102711::1757762674::0::1::::<>Node<><>0<>1<><>::
+BetterTerrain.gd::GDScript::3244802016330102711::1769519915::0::1::::<>Node<><>0<>1<><>::
 BetterTerrainData.gd::GDScript::4723581914670163495::1757762674::0::1::::<>RefCounted<><>0<>1<><>::
 icon.svg::CompressedTexture2D::7013481173950089383::1757762674::1768811145::1::::<><><>0<>0<>d34ffe2b1d57b7aa18cce303d243819e<>res://.godot/imported/icon.svg-7d4870855c0daec5051feb4adbea0091.ctex::
 plugin.cfg::TextFile::-1::1757762674::0::1::::<><><>0<>0<><>::
@@ -59,7 +59,7 @@ console_container.gd::GDScript::7778076026370580874::1715339998::0::1::::Console
 gdsqlite.gdextension::GDExtension::4837341577405836572::1768505594::0::1::::<><><>0<>0<><>::
 godot-sqlite.gd::GDScript::6354497535622739150::1768505594::0::1::::<>EditorPlugin<><>0<>1<><>::
 plugin.cfg::TextFile::-1::1768505594::0::1::::<><><>0<>0<><>::
-::res://addons/godot-sqlite/bin/::1769512825
+::res://addons/godot-sqlite/bin/::1769568706
 binaries_here.txt::TextFile::-1::1768576023::0::1::::<><><>0<>0<><>::
 ::res://addons/godot-sqlite/bin/libgdsqlite.ios.template_debug.xcframework/::1768734847
 ::res://addons/godot-sqlite/bin/libgdsqlite.ios.template_debug.xcframework/ios-arm64/::1768734847
@@ -321,11 +321,11 @@ phantom_camera_noise_2d.gd::GDScript::7746826514819894941::1768401545::0::1::::P
 phantom_camera_noise_3d.gd::GDScript::6187281538235516492::1768401545::0::1::::PhantomCameraNoise3D<>Resource<>res://addons/phantom_camera/icons/phantom_camera_noise_resource.svg<>0<>1<><>::
 tween_director_resource.gd::GDScript::1896363988711138719::1768401545::0::1::::TweenDirectorResource<>Resource<>res://addons/phantom_camera/icons/phantom_camera_tween_director_resource.svg<>0<>1<><>::
 tween_resource.gd::GDScript::2358266811638875852::1768401545::0::1::::PhantomCameraTween<>Resource<>res://addons/phantom_camera/icons/phantom_camera_tween.svg<>0<>0<><>::
-::res://addons/phantom_camera/themes/::1769510946
+::res://addons/phantom_camera/themes/::1769519456
 button_focus.tres::StyleBoxFlat::1106322926052085743::1768401545::0::1::::<><><>0<>0<><>::
 button_hover.tres::StyleBoxFlat::2151354179275418664::1768401545::0::1::::<><><>0<>0<><>::
 button_normal.tres::StyleBoxFlat::2549607310371774247::1768401545::0::1::::<><><>0<>0<><>::
-theme.tres::Theme::2909626652912860453::1769510946::0::1::::<><><>0<>0<><>::uid://dve7mgsjik4dg::::res://addons/phantom_camera/fonts/Nunito-Regular.ttf<>uid://5weqvkjsfso3::::res://addons/phantom_camera/themes/button_hover.tres<>uid://bclbwo3xrdat0::::res://addons/phantom_camera/themes/button_normal.tres
+theme.tres::Theme::2909626652912860453::1769519456::0::1::::<><><>0<>0<><>::uid://dve7mgsjik4dg::::res://addons/phantom_camera/fonts/Nunito-Regular.ttf<>uid://5weqvkjsfso3::::res://addons/phantom_camera/themes/button_hover.tres<>uid://bclbwo3xrdat0::::res://addons/phantom_camera/themes/button_normal.tres
 ::res://Assets/::1768811124
 ::res://Assets/Resources/::1768644717
 ::res://Assets/Sprites/::1769398821
@@ -342,11 +342,11 @@ Idle.png::CompressedTexture2D::6341351240732848223::1769398821::1769398822::1:::
 Jump.png::CompressedTexture2D::6906722706760743510::1769398821::1769398822::1::::<><><>0<>0<>7ed669f766f6aa7d6fba3c84cc9b45e3<>res://.godot/imported/Jump.png-b4335735e66d4954a02df7deceaebf35.ctex::
 Run.png::CompressedTexture2D::1219957570272803991::1769398821::1769398822::1::::<><><>0<>0<>e387974fb81b7a4c8a19726122ca0da5<>res://.godot/imported/Run.png-527d44b0a4128f3880f5328f26ef49d2.ctex::
 Take hit.png::CompressedTexture2D::3512790002559886908::1769398821::1769398822::1::::<><><>0<>0<>d6d2e214382e871d1c97b130ba1922ac<>res://.godot/imported/Take hit.png-387a485741e2b30532b037da6bf4375e.ctex::
-::res://Assets/Tilesets/::1769512729
-main_tileset.tres::TileSet::334553775069311750::1769512729::0::1::::<><><>0<>0<><>::uid://xpj4qmxxdhn2::::res://Assets/Tilesets/roguelikeSheet_transparent.png<>uid://c25u2br607fq7::::res://Assets/Tilesets/tileset16x16.png<>uid://bk5m6hho21fma::::res://Assets/Tilesets/Tileset.png
+::res://Assets/Tilesets/::1769519456
+main_tileset.tres::TileSet::334553775069311750::1769519456::0::1::::<><><>0<>0<><>::uid://xpj4qmxxdhn2::::res://Assets/Tilesets/roguelikeSheet_transparent.png<>uid://c25u2br607fq7::::res://Assets/Tilesets/tileset16x16.png<>uid://bk5m6hho21fma::::res://Assets/Tilesets/Tileset.png
 roguelikeSheet_transparent.png::CompressedTexture2D::1645908170930913881::1769353901::1769353902::1::::<><><>0<>0<>206d7392f192cdb844e465b7b48bcd8d<>res://.godot/imported/roguelikeSheet_transparent.png-b33f47d2ac6468a71522711bd828171f.ctex::
 test_tile.png::CompressedTexture2D::1286139448175158132::1768731139::1768811145::1::::<><><>0<>0<>4532b732e38c6e0e46782fb108df493d<>res://.godot/imported/test_tile.png-61e5dc87593fd489a8cf97ceaac3d5a9.ctex::
-test_tileset.tres::TileSet::9130173817183449212::1769512729::0::1::::<><><>0<>0<><>::uid://b8ev35ekm8p05::::res://Assets/Tilesets/Valley Ruin Asset Pack V0.1/Tiles Maps/DirtTile.png<>uid://g2d6u1gybhna::::res://Assets/Tilesets/Valley Ruin Asset Pack V0.1/Tiles Maps/GrassTile.png<>uid://drd3l7d1xdysp::::res://Assets/Tilesets/Valley Ruin Asset Pack V0.1/Tiles Maps/GrassWall.png<>uid://d0wgsdujqiges::::res://Assets/Tilesets/Valley Ruin Asset Pack V0.1/Tiles Maps/RockCliff.png<>uid://deug20ckh3lnh::::res://Assets/Tilesets/Valley Ruin Asset Pack V0.1/Tiles Maps/RockWall.png<>uid://c1ws7ceybyf5o::::res://Assets/Tilesets/Valley Ruin Asset Pack V0.1/Tiles Maps/Sand plus.png<>uid://butarcngh244v::::res://Assets/Tilesets/Valley Ruin Asset Pack V0.1/Tiles Maps/SandTile.png<>uid://bq61ywhmdbx8::::res://Assets/Tilesets/Valley Ruin Asset Pack V0.1/FlowerAndGrass.png<>uid://c2itlo8fed0ja::::res://Assets/Tilesets/Valley Ruin Asset Pack V0.1/Objects/stone and bush.png
+test_tileset.tres::TileSet::9130173817183449212::1769519456::0::1::::<><><>0<>0<><>::uid://b8ev35ekm8p05::::res://Assets/Tilesets/Valley Ruin Asset Pack V0.1/Tiles Maps/DirtTile.png<>uid://g2d6u1gybhna::::res://Assets/Tilesets/Valley Ruin Asset Pack V0.1/Tiles Maps/GrassTile.png<>uid://drd3l7d1xdysp::::res://Assets/Tilesets/Valley Ruin Asset Pack V0.1/Tiles Maps/GrassWall.png<>uid://d0wgsdujqiges::::res://Assets/Tilesets/Valley Ruin Asset Pack V0.1/Tiles Maps/RockCliff.png<>uid://deug20ckh3lnh::::res://Assets/Tilesets/Valley Ruin Asset Pack V0.1/Tiles Maps/RockWall.png<>uid://c1ws7ceybyf5o::::res://Assets/Tilesets/Valley Ruin Asset Pack V0.1/Tiles Maps/Sand plus.png<>uid://butarcngh244v::::res://Assets/Tilesets/Valley Ruin Asset Pack V0.1/Tiles Maps/SandTile.png<>uid://bq61ywhmdbx8::::res://Assets/Tilesets/Valley Ruin Asset Pack V0.1/FlowerAndGrass.png<>uid://c2itlo8fed0ja::::res://Assets/Tilesets/Valley Ruin Asset Pack V0.1/Objects/stone and bush.png
 tileset16x16.png::CompressedTexture2D::6731134114753827076::1769395357::1769395357::1::::<><><>0<>0<>91748b1c4b4e3daf93823a0c7bdaeba6<>res://.godot/imported/tileset16x16.png-533ff3be80e1c566a7f82694fec5a25a.ctex::
 Tileset.png::CompressedTexture2D::3151024795369754540::1769445770::1769445771::1::::<><><>0<>0<>acd2bfc1136791007f38e2a3d8bbb1b3<>res://.godot/imported/Tileset.png-a9c7fe0e1ab06f5adcc591be73d78dec.ctex::
 ::res://Assets/Tilesets/Valley Ruin Asset Pack V0.1/::1769480958
@@ -396,29 +396,30 @@ Player.tscn::PackedScene::8750588387286036805::1769442489::0::1::::<><><>0<>0<><
 BuildMenu.tscn::PackedScene::-1::1768727797::0::1::::<><><>0<>0<><>::res://Scripts/UI/BuildMenu.gd
 DebugPanel.tscn::PackedScene::-1::1768727786::0::1::::<><><>0<>0<><>::res://Scripts/UI/DebugPanel.gd
 HUD.tscn::PackedScene::-1::1768727775::0::1::::<><><>0<>0<><>::res://Scripts/UI/HUD.gd
-TileInfoPanel.tscn::PackedScene::-1::1769493430::0::1::::<><><>0<>0<><>::res://Scripts/UI/TileInfoPanel.gd
-::res://Scenes/World/::1769512729
-World.tscn::PackedScene::161879719274572799::1769512729::0::1::::<><><>0<>0<><>::uid://dvtdyhvv3oebm::::res://Scripts/core/WorldManager.gd<>uid://b4qqh2sgx72es::::res://Scripts/core/InteractionManager.gd<>uid://db0jgksitlkwd::::res://Scripts/components/MapGenerator.gd<>uid://doabdwec1hofs::::res://Scripts/core/GlobalMapController.gd<>res://Scenes/UI/HUD.tscn<>res://Scenes/UI/DebugPanel.tscn<>res://Scenes/UI/BuildMenu.tscn<>res://Scenes/UI/TileInfoPanel.tscn<>uid://e1cb042qyxy1::::res://Assets/Tilesets/main_tileset.tres<>uid://couw105c3bde4::::res://addons/godot_state_charts/state_chart.gd<>uid://d3cyvm6xn5ov1::::res://Assets/Tilesets/test_tileset.tres<>uid://jk2jm1g6q853::::res://addons/godot_state_charts/compound_state.gd<>uid://cytafq8i1y8qm::::res://addons/godot_state_charts/atomic_state.gd<>uid://cf1nsco3w0mf6::::res://addons/godot_state_charts/transition.gd<>uid://bd046eokvcnu2::::res://addons/phantom_camera/scripts/phantom_camera_host/phantom_camera_host.gd
+TileInfoPanel.tscn::PackedScene::-1::1769568690::0::1::::<><><>0<>0<><>::res://Scripts/UI/TileInfoPanel.gd
+::res://Scenes/World/::1769520845
+World.tscn::PackedScene::161879719274572799::1769520845::0::1::::<><><>0<>0<><>::uid://dvtdyhvv3oebm::::res://Scripts/core/WorldManager.gd<>uid://b4qqh2sgx72es::::res://Scripts/core/InteractionManager.gd<>uid://db0jgksitlkwd::::res://Scripts/components/MapGenerator.gd<>uid://doabdwec1hofs::::res://Scripts/core/GlobalMapController.gd<>res://Scenes/UI/HUD.tscn<>res://Scenes/UI/DebugPanel.tscn<>res://Scenes/UI/BuildMenu.tscn<>res://Scenes/UI/TileInfoPanel.tscn<>uid://e1cb042qyxy1::::res://Assets/Tilesets/main_tileset.tres<>uid://couw105c3bde4::::res://addons/godot_state_charts/state_chart.gd<>uid://d3cyvm6xn5ov1::::res://Assets/Tilesets/test_tileset.tres<>uid://jk2jm1g6q853::::res://addons/godot_state_charts/compound_state.gd<>uid://cytafq8i1y8qm::::res://addons/godot_state_charts/atomic_state.gd<>uid://cf1nsco3w0mf6::::res://addons/godot_state_charts/transition.gd<>uid://bd046eokvcnu2::::res://addons/phantom_camera/scripts/phantom_camera_host/phantom_camera_host.gd
 ::res://Scripts/::1769512537
 ::res://Scripts/autoload/::1769138604
 InputManager.gd::GDScript::1550163894646340108::1769007957::0::1::::<>Node2D<><>0<>0<><>::
 RegionDatabase.gd::GDScript::3902557412968617647::1769442917::0::1::::<>Node<><>0<>0<><>::
 SaveSystem.gd::GDScript::1781962889291642815::1769442512::0::1::::<>Node<><>0<>0<><>::
 SignalBus.gd::GDScript::7255886158275534948::1768827075::0::1::::<>Node<><>0<>0<><>::
-::res://Scripts/components/::1768811144
+::res://Scripts/components/::1769517933
 CameraRig.gd::GDScript::3151427323296912062::1769007397::0::1::::CameraRig<>Node2D<><>0<>0<><>::
 ChunkLogic.gd::GDScript::1968130786018100473::1769326343::0::1::::ChunkLogic<>Node<><>0<>0<><>::
 MapGenerator.gd::GDScript::7281618059696456863::1769442896::0::1::::MapGenerator<>Node<><>0<>0<><>::
-::res://Scripts/core/::1769512791
-GlobalMapController.gd::GDScript::8141973098205065612::1769512791::0::1::::GlobalMapController<>Node2D<><>0<>0<><>::
-InteractionManager.gd::GDScript::4455912611944165046::1769437258::0::1::::<>Node<><>0<>0<><>::
-WorldManager.gd::GDScript::8672676355933595854::1769512537::0::1::::<>Node<><>0<>0<><>::
+ShadowChunkRenderer.gd::GDScript::1238561200932948281::1769520149::0::1::::ShadowChunkRenderer<>RefCounted<><>0<>0<><>::
+::res://Scripts/core/::1769522586
+GlobalMapController.gd::GDScript::8141973098205065612::1769525080::0::1::::GlobalMapController<>Node2D<><>0<>0<><>::
+InteractionManager.gd::GDScript::4455912611944165046::1769520724::0::1::::<>Node<><>0<>0<><>::
+WorldManager.gd::GDScript::8672676355933595854::1769525080::0::1::::<>Node<><>0<>0<><>::
 ::res://Scripts/data/::1769512537
 ChunkData.gd::GDScript::137009484866830299::1769512537::0::1::::ChunkData<>RefCounted<><>0<>0<><>::
-Constants.gd::GDScript::632170089463405635::1769492946::0::1::::Constants<>RefCounted<><>0<>0<><>::
+Constants.gd::GDScript::632170089463405635::1769525080::0::1::::Constants<>RefCounted<><>0<>0<><>::
 MapUtils.gd::GDScript::2039618879116985313::1768795967::0::1::::MapUtils<>RefCounted<><>0<>0<><>::
 ::res://Scripts/entity/::1769442036
-Player.gd::GDScript::8579469954492689789::1769442513::0::1::::Player<>CharacterBody2D<><>0<>0<><>::
+Player.gd::GDScript::8579469954492689789::1769525080::0::1::::Player<>CharacterBody2D<><>0<>0<><>::
 ::res://Scripts/UI/::1768811144
 BuildMenu.gd::GDScript::5472951967712153975::1768795937::0::1::::BuildMenu<>Control<><>0<>0<><>::
 DebugPanel.gd::GDScript::9206537856078077808::1768795966::0::1::::DebugPanel<>Control<><>0<>0<><>::
