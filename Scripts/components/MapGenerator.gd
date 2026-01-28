@@ -127,8 +127,9 @@ func _generate_terrain(chunk) -> void:
 	var base_x = chunk.coord.x * _C.CHUNK_SIZE
 	var base_y = chunk.coord.y * _C.CHUNK_SIZE
 
-	for local_y in range(_C.CHUNK_SIZE):
-		for local_x in range(_C.CHUNK_SIZE):
+	# 生成范围扩大一圈 (-1 到 CHUNK_SIZE)，用于地形连接计算
+	for local_y in range(-1, _C.CHUNK_SIZE + 1):
+		for local_x in range(-1, _C.CHUNK_SIZE + 1):
 			var world_x = base_x + local_x
 			var world_y = base_y + local_y
 

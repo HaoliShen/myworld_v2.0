@@ -73,7 +73,7 @@ func load_chunk_blob(chunk_coord: Vector2i) -> PackedByteArray:
 		_mutex.unlock()
 		return PackedByteArray()
 
-	print("[RegionDatabase] load_chunk_blob: Querying chunk %s in region %s" % [local_coord, region_coord])
+	#print("[RegionDatabase] load_chunk_blob: Querying chunk %s in region %s" % [local_coord, region_coord])
 	db.query_with_bindings(
 		"SELECT data FROM chunks WHERE pos_x = ? AND pos_y = ?",
 		[local_coord.x, local_coord.y]
@@ -84,10 +84,10 @@ func load_chunk_blob(chunk_coord: Vector2i) -> PackedByteArray:
 	_mutex.unlock()
 
 	if result.size() == 0:
-		print("[RegionDatabase] load_chunk_blob: Chunk not found in DB")
+		#print("[RegionDatabase] load_chunk_blob: Chunk not found in DB")
 		return PackedByteArray()
 	
-	print("[RegionDatabase] load_chunk_blob: Chunk found, returning data")
+	#print("[RegionDatabase] load_chunk_blob: Chunk found, returning data")
 	var data = result[0]["data"]
 	if data is PackedByteArray:
 		return data
@@ -198,7 +198,7 @@ func _get_db_connection(region_coord: Vector2i):
 
 	# 打开新连接
 	var db_path := _get_region_file_path(region_coord)
-	print("[RegionDatabase] _get_db_connection: Opening DB at %s" % db_path)
+	#print("[RegionDatabase] _get_db_connection: Opening DB at %s" % db_path)
 
 	# 确保目录存在
 	SaveSystem.ensure_directory_exists(db_path.get_base_dir())

@@ -19,6 +19,10 @@ const TILE_SIZE: int = 16
 ## 用于: ChunkData 数据结构大小, RegionDatabase 文件索引计算
 const CHUNK_SIZE: int = 32
 
+## 区块数据尺寸 (包含 1 圈 padding)
+## 用于: ChunkData 内部存储
+const CHUNK_DATA_SIZE: int = CHUNK_SIZE + 2
+
 ## 区块像素尺寸 (派生常量)
 const CHUNK_SIZE_PIXELS: int = CHUNK_SIZE * TILE_SIZE  # 1024
 
@@ -48,12 +52,22 @@ enum Layer {
 # =============================================================================
 # 地面配置 (Ground Configuration)
 # =============================================================================
-
-## 地面 TileSet 源 ID
-const GROUND_SOURCE_ID: int = 2
+##地面层tileset资源路径
+const GROUND_TILESET:String = "res://Assets/Tilesets/test_tileset.tres"
 
 ## 地面 Terrain Set 索引
 const GROUND_TERRAIN_SET: int = 0
+const TERRAIN_SET_GROUND: int = 0 # Alias for consistency
+
+## 地形连接位掩码 (Autotiling Bitmask)
+const BIT_LEFT: int = 1
+const BIT_BOTTOM_LEFT: int = 2
+const BIT_BOTTOM: int = 4
+const BIT_BOTTOM_RIGHT: int = 8
+const BIT_RIGHT: int = 16
+const BIT_TOP_RIGHT: int = 32
+const BIT_TOP: int = 64
+const BIT_TOP_LEFT: int = 128
 
 ## 地形高度对应的配置(terrainset中的terrain配置)
 ## Key: Elevation (int) -> Value: Dictionary { "terrain_id": int }

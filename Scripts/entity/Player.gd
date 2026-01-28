@@ -68,13 +68,13 @@ signal selection_changed(is_selected: bool)
 @onready var _camera_rig = $CameraRig
 
 ## 视觉容器
-@onready var _visuals: Node2D = $Visuals
+# @onready var _visuals: Node2D = $Visuals
 
 ## 精灵
 @onready var _sprite: Sprite2D = $Visuals/Sprite2D
 
 ## 动画播放器
-@onready var _anim_player: AnimationPlayer = $Visuals/AnimationPlayer
+# @onready var _anim_player: AnimationPlayer = $Visuals/AnimationPlayer
 
 ## 选中标记
 @onready var _selection_marker: Sprite2D = $Visuals/SelectionMarker
@@ -86,8 +86,8 @@ signal selection_changed(is_selected: bool)
 ## 当前所在区块
 var _current_chunk: Vector2i = Vector2i.ZERO
 
-## 当前高度
-var _current_elevation: int = 0
+## 当前高度 (暂时未使用)
+# var _current_elevation: int = 0
 
 ## 是否被选中
 var _is_selected: bool = false

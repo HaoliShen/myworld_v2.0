@@ -1,536 +1,366 @@
 ## GlobalMapController.gd
-## 全局地图控制器 - 全局渲染画布 (Global Rendering Canvas)
-## 路径: res://Scripts/Components/GlobalMapController.gd
+## 全局地图控制器 - 负责管理和渲染所有区块节点
+## 路径: res://Scripts/Core/GlobalMapController.gd
 ## 挂载节点: World/Environment
-## 继承: Node2D
-## 依赖: Better Terrain (插件)
 ##
 ## 职责:
-## 它是连接数据 (ChunkData) 与视觉 (TileMapLayer) 的唯一桥梁。
-## 它不存储任何游戏逻辑状态，只负责调用 Better Terrain 的 API 进行高效的"画"和"擦"。
+## 1. 维护活跃的 ChunkVisual 节点集合
+## 2. 负责 TileSet 的地形连接查找表构建
+## 3. 在后台线程计算区块的瓦片数据 (地形连接 + 物体)
+## 4. 实例化和更新 ChunkVisual
 class_name GlobalMapController
 extends Node2D
 
-# 预加载依赖的类
 const _C = preload("res://Scripts/data/Constants.gd")
 const _MapUtils = preload("res://Scripts/data/MapUtils.gd")
-const _ShadowChunkRenderer = preload("res://Scripts/components/ShadowChunkRenderer.gd")
+const _ChunkVisual = preload("res://Scripts/components/ChunkVisual.gd")
 
 # =============================================================================
-# 节点引用 (Node References)
+# 属性
 # =============================================================================
 
-## 基础地形层 (Z-Index: -10) - 用于绘制地面、水体和悬崖
-@onready var _ground_layer: TileMapLayer = $GroundLayer
+## 活跃的区块视觉节点
+## Key: Vector2i (Chunk Coord) -> Value: ChunkVisual
+var active_chunks: Dictionary = {}
 
-## 装饰层 (Y-Sort Enabled) - 用于绘制草丛、花朵、地毯
-@onready var _decoration_layer: TileMapLayer = $DecorationLayer
+## 共享 TileSet (从编辑器配置的 GroundLayer 获取，或者代码加载)
+var _tile_set: TileSet
 
-## 障碍层 (Y-Sort Enabled) - 用于绘制树木、墙壁、建筑
-@onready var _obstacle_layer: TileMapLayer = $ObstacleLayer
+## 地形连接查找表
+## Key: TerrainSet (int) -> Key: Terrain (int) -> Key: Bitmask (int) -> Value: Dictionary {source, atlas, alt}
+var _terrain_lookup: Dictionary = {}
 
-## 导航层 (不可见) - 用于寻路系统
-@onready var _navigation_layer: TileMapLayer = $NavigationLayer
+## 线程池任务 ID 映射 (防止重复计算)
+var _calculating_tasks: Dictionary = {}
 
-# =============================================================================
-# 导航常量 (Navigation Constants)
-# =============================================================================
+### 导航层引用 (仍然保留全局导航层，因为它通常是连续的)
+#@onready var _navigation_layer: TileMapLayer = $NavigationLayer
 
-## 导航 TileSet 中的 Source ID
-const NAV_SOURCE_ID: int = 3
-
-## 可通行 Tile 的 Atlas 坐标
-const NAV_TILE_PASSABLE: Vector2i = Vector2i(56, 25)
-
-## 不可通行 Tile 的 Atlas 坐标 (或使用 -1 表示无 tile)
-const NAV_TILE_BLOCKED: Vector2i = Vector2i(56, 26)
+## WorldManager 引用 (由 WorldManager 注入)
+var world_manager = null
 
 # =============================================================================
-# 内部变量 (Internal Variables)
+# 常量
 # =============================================================================
 
-## TileSet 引用
-var _tileset: TileSet
+# (已移至 Constants.gd)
 
-## 导航 TileSet 引用
-var _nav_tileset: TileSet
-
-## 是否已初始化
-var _is_initialized: bool = false
 
 # =============================================================================
-# 生命周期 (Lifecycle)
+# 生命周期
 # =============================================================================
 
 func _ready() -> void:
-	print("[GlobalMapController] _ready called - DEBUG CHECK")
-	_initialize()
-
-
-func _initialize() -> void:
-	if _ground_layer and _ground_layer.tile_set:
-		_tileset = _ground_layer.tile_set
-		_is_initialized = true
-
-# =============================================================================
-# 批量操作 (Batch Operations) - 用于流式加载
-# =============================================================================
-
-## 渲染指定区块的数据到全局地图
-## 职责:
-## 1. 计算该区块在全局 TileMap 中的坐标偏移
-## 2. 读取 ChunkData 中的地形、高度和物体数据
-## 3. 将逻辑 ID (ChunkData) 映射为视觉 ID (TileSet)
-## 4. 调用 BetterTerrain 的批量设置接口将数据填充到对应的 TileMapLayer
-## 5. 触发 BetterTerrain 的地形连接更新以处理边缘自动拼接
-## @param coord: 区块坐标
-## @param data: 包含该区块所有信息的纯数据对象
-func render_chunk(coord: Vector2i, data) -> void:
-	var t_start = Time.get_ticks_usec()
-	print("[DEBUG] render_chunk START for chunk %s at %d us" % [coord, t_start])
+	# 1. 加载或获取 TileSet
+	if _C.GROUND_TILESET and ResourceLoader.exists(_C.GROUND_TILESET):
+		_tile_set = load(_C.GROUND_TILESET)
 	
-	if not _is_initialized:
-		push_error("GlobalMapController: Not initialized")
+	
+	if not _tile_set:
+		push_error("GlobalMapController: Failed to load TileSet from %s" % _C.GROUND_TILESET)
 		return
 
-	# 计算区块在全局 TileMap 中的基础坐标
-	var base_tile := Vector2i(
-		coord.x * _C.CHUNK_SIZE,
-		coord.y * _C.CHUNK_SIZE
-	)
-
-	# 收集需要更新的瓦片坐标 (用于 BetterTerrain 批量更新)
-	var ground_cells: Array[Vector2i] = []
-
-	# 1. 渲染地面层 (Layer 0) - 使用 Autotile 批量设置
-	var terrain_cells = {} # Key: terrain_id -> Value: Array[Vector2i]
-	
-	for local_y in range(_C.CHUNK_SIZE):
-		for local_x in range(_C.CHUNK_SIZE):
-			var tile_coord := base_tile + Vector2i(local_x, local_y)
-			var terrain_id = data.get_terrain(local_x, local_y)
-			# var elevation = data.get_elevation(local_x, local_y) # 地形 ID 已包含高度信息
-
-			# 收集相同地形的瓦片
-			if not terrain_cells.has(terrain_id):
-				terrain_cells[terrain_id] = []
-			terrain_cells[terrain_id].append(tile_coord)
-			
-			ground_cells.append(tile_coord)
-	
-	var t_ground_prep = Time.get_ticks_usec()
-	print("[DEBUG] render_chunk - Ground prep completed: %d us, terrain types: %d, total cells: %d" % [
-		t_ground_prep - t_start, terrain_cells.size(), ground_cells.size()
-	])
-
-	# 批量应用地形连接
-	# 使用 BetterTerrain 插件 API
-	var time=[]
-	var terrain_id_list = []
-	
-	for t_id in terrain_cells:
-		if not terrain_cells[t_id].is_empty():
-			var t_before = Time.get_ticks_usec()
-			print("[DEBUG] render_chunk - Calling BetterTerrain.set_cells for terrain_id %d with %d cells" % [t_id, terrain_cells[t_id].size()])
-			# _ground_layer.set_cells_terrain_connect(terrain_cells[t_id], _C.GROUND_TERRAIN_SET, t_id, false)
-			# 替换为 BetterTerrain.set_cells
-			_ShadowChunkRenderer.shared_mutex.lock()
-			BetterTerrain.set_cells(_ground_layer, terrain_cells[t_id], t_id)
-			_ShadowChunkRenderer.shared_mutex.unlock()
-			var t_after = Time.get_ticks_usec()
-			time.append(t_after)
-			terrain_id_list.append(t_id)
-			print("[DEBUG] render_chunk - BetterTerrain.set_cells for terrain_id %d took %d us" % [t_id, t_after - t_before])
-
-	var t_bt_done = Time.get_ticks_usec()
-	print("[DEBUG] render_chunk - All BetterTerrain.set_cells completed: %d us" % [t_bt_done - t_ground_prep])
-
-	# 2. 渲染物体层 (Layer 1 & 2)
-	var object_count = data.object_map.size()
-	print("[DEBUG] render_chunk - Starting object rendering, count: %d" % object_count)
-	for packed_key in data.object_map:
-		var unpacked := _MapUtils.unpack_coord(packed_key)
-		var local_x := unpacked.x
-		var local_y := unpacked.y
-		var layer := unpacked.z
-		var object_id: int = data.object_map[packed_key]
-
-		var tile_coord := base_tile + Vector2i(local_x, local_y)
-		_set_object_cell(tile_coord, layer, object_id)
-
-	var t_obj = Time.get_ticks_usec()
-	print("[DEBUG] render_chunk - Object rendering completed: %d us" % [t_obj - t_bt_done])
-
-	# 3. 触发 BetterTerrain 更新地形连接
-	print("[DEBUG] render_chunk - Calling _update_terrain_connections with %d cells" % ground_cells.size())
-	_update_terrain_connections(ground_cells)
-	
-	var t_conn = Time.get_ticks_usec()
-	print("[DEBUG] render_chunk - Terrain connections update completed: %d us" % [t_conn - t_obj])
-	
-	# 4. 更新导航层
-	print("[DEBUG] render_chunk - Starting navigation update")
-	_update_chunk_navigation(coord, data)
-	
-	var t_nav = Time.get_ticks_usec()
-	print("[DEBUG] render_chunk - Navigation update completed: %d us" % [t_nav - t_conn])
-
-	var total_time = t_nav - t_start
-	print("[Profile] render_chunk %s Total: %d us (%.2f ms) | Prep: %d | BetterTerrain: %d | Objects: %d | Connections: %d | Nav: %d" % [
-		coord, total_time, total_time / 1000.0,
-		t_ground_prep - t_start,
-		t_bt_done - t_ground_prep,
-		t_obj - t_bt_done,
-		t_conn - t_obj,
-		t_nav - t_conn
-	])
-	print("[DEBUG] render_chunk END for chunk %s\n" % coord)
-
-
-## [新增] 从影子图层快速复制数据到主图层
-## 职责:
-## 1. 从预计算好的影子TileMapLayer批量复制瓦片数据
-## 2. 渲染物体层（装饰和障碍）
-## 3. 更新导航层
-## @param shadow_data: 影子渲染器返回的数据字典
-func apply_shadow_chunk(shadow_data: Dictionary) -> void:
-	var t_start = Time.get_ticks_usec()
-	var coord: Vector2i = shadow_data["coord"]
-	var shadow_ground: TileMapLayer = shadow_data["shadow_ground"]
-	var base_tile: Vector2i = shadow_data["base_tile"]
-	
-	print("[DEBUG] apply_shadow_chunk START for chunk %s" % coord)
-	
-	var used_cells := shadow_ground.get_used_cells()
-	print("[DEBUG] apply_shadow_chunk - Copying %d cells from shadow layer" % used_cells.size())
-	
-	var t_copy_start = Time.get_ticks_usec()
-	for cell in used_cells:
-		var source_id := shadow_ground.get_cell_source_id(cell)
-		var atlas_coords := shadow_ground.get_cell_atlas_coords(cell)
-		var alternative := shadow_ground.get_cell_alternative_tile(cell)
-		_ground_layer.set_cell(cell, source_id, atlas_coords, alternative)
-	
-	var t_copy_end = Time.get_ticks_usec()
-	print("[DEBUG] apply_shadow_chunk - Cell copy completed in %d us (%.2f ms)" % [t_copy_end - t_copy_start, (t_copy_end - t_copy_start) / 1000.0])
-	
-	var object_count = shadow_data["object_data"].size()
-	print("[DEBUG] apply_shadow_chunk - Rendering %d objects" % object_count)
-	for packed_key in shadow_data["object_data"]:
-		var unpacked := _MapUtils.unpack_coord(packed_key)
-		var local_x := unpacked.x
-		var local_y := unpacked.y
-		var layer := unpacked.z
-		var object_id: int = shadow_data["object_data"][packed_key]
-		
-		var tile_coord := base_tile + Vector2i(local_x, local_y)
-		_set_object_cell(tile_coord, layer, object_id)
-	
-	var t_obj_end = Time.get_ticks_usec()
-	print("[DEBUG] apply_shadow_chunk - Object rendering completed in %d us" % [t_obj_end - t_copy_end])
-	
-	var chunk_data = shadow_data.get("chunk_data")
-	if chunk_data:
-		_update_chunk_navigation(coord, chunk_data)
-	
-	var t_nav_end = Time.get_ticks_usec()
-	
-	var total_time = t_nav_end - t_start
-	print("[Profile] apply_shadow_chunk %s Total: %d us (%.2f ms) | Copy: %d | Objects: %d | Nav: %d" % [
-		coord, total_time, total_time / 1000.0,
-		t_copy_end - t_copy_start,
-		t_obj_end - t_copy_end,
-		t_nav_end - t_obj_end
-	])
-	print("[DEBUG] apply_shadow_chunk END for chunk %s\n" % coord)
-
-
-## [新增] 批量更新区块边界的地形连接
-## 职责:
-## 只更新指定区块的边界瓦片，而不是整个区块，大幅减少计算量
-## @param chunk_coords: 需要更新边界的区块坐标数组
-func update_chunk_boundaries(chunk_coords: Array[Vector2i]) -> void:
-	if chunk_coords.is_empty():
-		return
-	
-	var t_start = Time.get_ticks_usec()
-	var boundary_cells: Array[Vector2i] = []
-	
-	print("[DEBUG] update_chunk_boundaries - Processing %d chunks" % chunk_coords.size())
-	
-	for coord in chunk_coords:
-		var base_tile := Vector2i(
-			coord.x * _C.CHUNK_SIZE,
-			coord.y * _C.CHUNK_SIZE
-		)
-		
-		for x in range(_C.CHUNK_SIZE):
-			boundary_cells.append(base_tile + Vector2i(x, 0))
-			boundary_cells.append(base_tile + Vector2i(x, _C.CHUNK_SIZE - 1))
-		
-		for y in range(1, _C.CHUNK_SIZE - 1):
-			boundary_cells.append(base_tile + Vector2i(0, y))
-			boundary_cells.append(base_tile + Vector2i(_C.CHUNK_SIZE - 1, y))
-	
-	var t_prep = Time.get_ticks_usec()
-	print("[DEBUG] update_chunk_boundaries - Collected %d boundary cells in %d us" % [boundary_cells.size(), t_prep - t_start])
-	
-	if not boundary_cells.is_empty():
-		_ShadowChunkRenderer.shared_mutex.lock()
-		BetterTerrain.update_terrain_cells(_ground_layer, boundary_cells)
-		_ShadowChunkRenderer.shared_mutex.unlock()
-	
-	var t_end = Time.get_ticks_usec()
-	print("[Profile] update_chunk_boundaries - %d chunks, %d cells in %d us (%.2f ms)" % [
-		chunk_coords.size(), boundary_cells.size(), t_end - t_start, (t_end - t_start) / 1000.0
-	])
-
-
-## 清除指定区块的渲染内容
-## 职责:
-## 1. 计算该区块在全局 TileMap 中的矩形范围
-## 2. 将该范围内的三层 TileMapLayer 数据全部置空
-## 3. 触发 BetterTerrain 更新，确保移除后邻接区块的边缘纹理正确闭合
-## @param coord: 区块坐标
-func clear_chunk(coord: Vector2i) -> void:
-	var t_start = Time.get_ticks_usec()
-	if not _is_initialized:
-		return
-
-	var base_tile := Vector2i(
-		coord.x * _C.CHUNK_SIZE,
-		coord.y * _C.CHUNK_SIZE
-	)
-
-	var cleared_cells: Array[Vector2i] = []
-
-	# 清除所有层的瓦片
-	# 优化：不要逐个 erase，尝试批量操作或者只收集坐标最后一起更新
-	# 目前 Godot 没有 erase_cells，只能循环
-	for local_y in range(_C.CHUNK_SIZE):
-		for local_x in range(_C.CHUNK_SIZE):
-			var tile_coord := base_tile + Vector2i(local_x, local_y)
-
-			if _ground_layer:
-				_ground_layer.erase_cell(tile_coord)
-			if _decoration_layer:
-				_decoration_layer.erase_cell(tile_coord)
-			if _obstacle_layer:
-				_obstacle_layer.erase_cell(tile_coord)
-			if _navigation_layer:
-				_navigation_layer.erase_cell(tile_coord)
-
-			cleared_cells.append(tile_coord)
-	
-	var t_erase = Time.get_ticks_usec()
-	# 更新邻接区块的边缘连接
-	#_update_terrain_connections(cleared_cells)
-	var t_conn = Time.get_ticks_usec()
-	
-	print("[DEBUG] clear_chunk %s Total: %d us | Erase: %d | Connect: %d" % [coord, t_conn - t_start, t_erase - t_start, t_conn - t_erase])
-
-# =============================================================================
-# 单点操作 (Single Operations) - 用于玩家交互
-# =============================================================================
-
-## 单点更新视觉，用于玩家实时交互 (建造/破坏)
-## 职责:
-## 1. 将世界像素坐标转换为 TileMap 网格坐标
-## 2. 根据 layer_enum 选择对应的 TileMapLayer
-## 3. 设置单元格并更新周边连接
-## @param global_pos: 发生改变的世界坐标
-## @param layer_enum: 目标层级 (_C.Layer)
-## @param tile_id: 新的图块 ID (-1 表示移除)
-func set_cell_at(global_pos: Vector2, layer_enum: int, tile_id: int) -> void:
-	if not _is_initialized:
-		return
-
-	var tile_coord := _MapUtils.world_to_tile(global_pos)
-
-	match layer_enum:
-		_C.Layer.GROUND:
-			if tile_id == -1:
-				_ground_layer.erase_cell(tile_coord)
-			else:
-				_set_ground_cell(tile_coord, tile_id)
-			# 更新周边连接
-			_update_terrain_connections([tile_coord])
-
-		_C.Layer.DECORATION:
-			if tile_id == -1:
-				_decoration_layer.erase_cell(tile_coord)
-			else:
-				_set_object_cell(tile_coord, _C.Layer.DECORATION, tile_id)
-
-		_C.Layer.OBSTACLE:
-			if tile_id == -1:
-				_obstacle_layer.erase_cell(tile_coord)
-			else:
-				_set_object_cell(tile_coord, _C.Layer.OBSTACLE, tile_id)
-			# 障碍物变化时更新导航
-			_update_navigation_cell(tile_coord, tile_id != -1)
-
-# =============================================================================
-# 内部辅助方法 (Internal Helpers)
-# =============================================================================
-
-
-
-## 设置地面层单元格
-func _set_ground_cell(tile_coord: Vector2i, visual_id: int) -> void:
-	if _ground_layer == null or visual_id < 0:
-		return
-
-	# 使用 Godot 内置地形系统
-	_ground_layer.set_cells_terrain_connect([tile_coord], 0, visual_id)
-
-
-## 设置物体层单元格
-func _set_object_cell(tile_coord: Vector2i, layer: int, object_id: int) -> void:
-	if object_id < 0:
-		return
-
-	var target_layer: TileMapLayer = get_layer(layer)
-	if target_layer == null:
-		return
-
-	# 从配置表获取资源信息
-	var resource_config = _C.OBJECT_RESOURCE_TABLE.get(object_id)
-	if resource_config == null:
-		return
-
-	var source_id: int = resource_config.get("source_id", -1)
-	var atlas_coord: Vector2i = resource_config.get("atlas", Vector2i(-1, -1))
-
-	# 如果 source_id 为 -1 (未配置资源)，则跳过渲染
-	if source_id < 0:
-		return
-
-	target_layer.set_cell(tile_coord, source_id, atlas_coord)
-
-
-
-## 更新地形连接 (预留接口，BetterTerrain 插件可选)
-func _update_terrain_connections(_cells: Array[Vector2i]) -> void:
-	# BetterTerrain 插件未启用时，此函数为空操作
-	# 如需启用 BetterTerrain 自动连接功能，请安装插件并取消注释以下代码:
-	if not _cells.is_empty():
-		var t_before = Time.get_ticks_usec()
-		print("[DEBUG] _update_terrain_connections - Calling BetterTerrain.update_terrain_cells with %d cells" % _cells.size())
-		_ShadowChunkRenderer.shared_mutex.lock()
-		BetterTerrain.update_terrain_cells(_ground_layer, _cells)
-		_ShadowChunkRenderer.shared_mutex.unlock()
-		var t_after = Time.get_ticks_usec()
-		print("[DEBUG] _update_terrain_connections - BetterTerrain.update_terrain_cells took %d us (%.2f ms)" % [t_after - t_before, (t_after - t_before) / 1000.0])
-	pass
-
-
-
-# =============================================================================
-# 导航层方法 (Navigation Layer Methods)
-# =============================================================================
-
-## 批量更新区块的导航数据
-## @param coord: 区块坐标
-## @param data: 区块数据
-func _update_chunk_navigation(coord: Vector2i, data) -> void:
-	if _navigation_layer == null:
-		return
-	
-	var base_tile := Vector2i(
-		coord.x * _C.CHUNK_SIZE,
-		coord.y * _C.CHUNK_SIZE
-	)
-
-	for local_y in range(_C.CHUNK_SIZE):
-		for local_x in range(_C.CHUNK_SIZE):
-			var tile_coord := base_tile + Vector2i(local_x, local_y)
-
-			# 判断是否可通行，这里仅设置了可通行地块
-			if not _is_tile_blocked(local_x, local_y, data):
-				_navigation_layer.set_cell(tile_coord, NAV_SOURCE_ID, NAV_TILE_PASSABLE)
-	
-	
-	
-
-## 更新单个导航格 (用于实时交互)
-## @param tile_coord: 瓦片坐标
-## @param is_blocked: 是否阻挡
-func _update_navigation_cell(tile_coord: Vector2i, is_blocked: bool) -> void:
-	if _navigation_layer == null:
-		return
-	_set_navigation_cell(tile_coord, is_blocked)
-
-
-## 设置导航层单元格
-## @param tile_coord: 瓦片坐标
-## @param is_blocked: 是否阻挡
-func _set_navigation_cell(tile_coord: Vector2i, is_blocked: bool) -> void:
-	if _navigation_layer == null:
-		return
-
-	if is_blocked:
-		# 设置为不可通行瓦片
-		_navigation_layer.set_cell(tile_coord, NAV_SOURCE_ID, NAV_TILE_BLOCKED)
+	# 2. 构建查找表
+	_build_terrain_lookup()
+	print("[GlobalMapController] Terrain lookup table built. Size: %s" % _terrain_lookup.size())
+	if _terrain_lookup.is_empty():
+		push_error("[GlobalMapController] Terrain lookup table is empty! Check TileSet configuration.")
 	else:
-		# 设置为可通行瓦片
-		_navigation_layer.set_cell(tile_coord, NAV_SOURCE_ID, NAV_TILE_PASSABLE)
+		# 打印完整地形表供核对
+		print("========== TERRAIN LOOKUP TABLE DUMP ==========")
+		for t_set in _terrain_lookup:
+			for t_id in _terrain_lookup[t_set]:
+				print("TerrainSet: %s, TerrainID: %s" % [t_set, t_id])
+				for mask in _terrain_lookup[t_set][t_id]:
+					var info = _terrain_lookup[t_set][t_id][mask]
+					print("  Mask: %s -> Source: %s, Atlas: %s, Alt: %s" % [mask, info.source, info.atlas, info.alt])
+		print("===============================================")
 
-
-## 判断瓦片是否被阻挡
-## 阻挡条件:
-## 1. 高度为 0 (水体/悬崖)
-## 2. 障碍层有物体 (树木、建筑等)
-## @param local_x: 区块内局部 X 坐标
-## @param local_y: 区块内局部 Y 坐标
-## @param data: 区块数据
-## @return: true 表示阻挡, false 表示可通行
-func _is_tile_blocked(local_x: int, local_y: int, data) -> bool:
-	# 检查高度: 高度为 0 表示水体或悬崖，不可通行
-	# 注意: MapGenerator 生成的 watertile 是 terrain_id=0, elevation=0
-	var elevation = data.get_elevation(local_x, local_y)
-	if elevation == 0:
-		return true
-
-	# 检查障碍层是否有物体
-	# 注意: 即使物体层不渲染 (OBJECT_SOURCE_ID = -1)，逻辑阻挡仍然有效
-	var obstacle_id = data.get_object(local_x, local_y, _C.Layer.OBSTACLE)
-	if obstacle_id > 0:
-		return true
-
-	return false
 
 # =============================================================================
-# 工具方法 (Utility Methods)
+# 公共接口
 # =============================================================================
 
-## 获取指定瓦片坐标的层引用
-func get_layer(layer_enum: int) -> TileMapLayer:
-	match layer_enum:
-		_C.Layer.GROUND:
-			return _ground_layer
-		_C.Layer.DECORATION:
-			return _decoration_layer
-		_C.Layer.OBSTACLE:
-			return _obstacle_layer
-		_:
-			return null
+## 渲染区块
+## @param coord: 区块坐标
+## @param data: ChunkData (包含 padding)
+func render_chunk(coord: Vector2i, data) -> void:
+	if active_chunks.has(coord):
+		return
+	
+	if _calculating_tasks.has(coord):
+		return
+		
+	# 启动后台任务计算视觉数据
+	# 注意：传递 data.terrain_map (PackedInt32Array) 是值传递(COW)，但在线程中读取是安全的
+	# data 对象本身是 RefCounted，传递引用也是安全的，只要主线程不修改它
+	var task_id = WorkerThreadPool.add_task(
+		_calculate_visuals_task.bind(coord, data),
+		true, # High priority
+		"RenderChunk:%s" % coord
+	)
+	_calculating_tasks[coord] = task_id
 
 
-## 检查瓦片是否可通行
-func is_tile_walkable(tile_coord: Vector2i) -> bool:
-	# 检查障碍层是否有阻挡物
-	if _obstacle_layer:
-		var source_id := _obstacle_layer.get_cell_source_id(tile_coord)
-		if source_id != -1:
-			return false
-	return true
+## 清除区块
+func clear_chunk(coord: Vector2i) -> void:
+	if active_chunks.has(coord):
+		var visual = active_chunks[coord]
+		active_chunks.erase(coord)
+		visual.queue_free()
+	
+	# 如果有正在进行的计算任务，无法直接取消，但在回调中会检查 active_chunks
 
 
-## 手动初始化 (用于动态创建场景)
-func manual_initialize(ground: TileMapLayer, decoration: TileMapLayer, obstacle: TileMapLayer, navigation: TileMapLayer = null) -> void:
-	_ground_layer = ground
-	_decoration_layer = decoration
-	_obstacle_layer = obstacle
-	_navigation_layer = navigation
-	_initialize()
+## 修改单点 (运行时)
+func set_cell_at(global_pos: Vector2, layer_enum: int, tile_id: int) -> void:
+	var tile_coord := _MapUtils.world_to_tile(global_pos)
+	var chunk_coord := _MapUtils.tile_to_chunk(tile_coord)
+	var local_coord := _MapUtils.tile_to_local(tile_coord)
+	
+	if active_chunks.has(chunk_coord):
+		var visual: ChunkVisual = active_chunks[chunk_coord]
+		
+		var source_id = -1
+		var atlas_coord = Vector2i(-1, -1)
+		
+		# 如果是添加物体/地形，需要查找资源
+		if tile_id != -1:
+			if layer_enum == _C.Layer.GROUND:
+				# 运行时修改地形比较复杂，需要重新计算连接
+				# 简单起见，这里只设置中心块，不更新连接 (或者请求重新完整渲染该 Chunk)
+				# 为了正确性，最好是重新渲染整个 Chunk (及其邻居)
+				# 暂时实现为：重新请求渲染该 Chunk
+				if world_manager:
+					var chunk_data = world_manager.get_chunk_data(chunk_coord)
+					if chunk_data:
+						clear_chunk(chunk_coord)
+						render_chunk(chunk_coord, chunk_data)
+						# TODO: 邻居也需要更新边缘
+				return
+			else:
+				# 物体直接查表
+				var res = _C.OBJECT_RESOURCE_TABLE.get(tile_id)
+				if res:
+					source_id = res.source_id
+					atlas_coord = res.atlas
+		
+		visual.set_block(local_coord, layer_enum, source_id, atlas_coord)
+
+
+# =============================================================================
+# 查找表构建 (Initialization)
+# =============================================================================
+
+func _build_terrain_lookup() -> void:
+	if not _tile_set: return
+	
+	for i in _tile_set.get_source_count():
+		var source_id = _tile_set.get_source_id(i)
+		var source = _tile_set.get_source(source_id)
+		if not source is TileSetAtlasSource: continue
+		
+		for j in source.get_tiles_count():
+			var atlas_coords = source.get_tile_id(j)
+			for n in source.get_alternative_tiles_count(atlas_coords):
+				var alt_id = source.get_alternative_tile_id(atlas_coords, n)
+				var tile_data = source.get_tile_data(atlas_coords, alt_id)
+				
+				# 检查是否有地形数据
+				if tile_data.terrain_set == -1 or tile_data.terrain == -1:
+					continue
+					
+				# 计算该 Tile 对应的 Bitmask ID
+				var bitmask = _calculate_tile_bitmask(tile_data)
+				if bitmask == -1: continue
+				
+				# 存入查找表
+				var t_set = tile_data.terrain_set
+				var t_id = tile_data.terrain
+				
+				if not _terrain_lookup.has(t_set): _terrain_lookup[t_set] = {}
+				if not _terrain_lookup[t_set].has(t_id): _terrain_lookup[t_set][t_id] = {}
+				
+				_terrain_lookup[t_set][t_id][bitmask] = {
+					"source": source_id,
+					"atlas": atlas_coords,
+					"alt": alt_id
+				}
+	
+	# print("[GlobalMapController] Terrain lookup built. Dump for set 0, terrain 0:")
+	# if _terrain_lookup.has(0) and _terrain_lookup[0].has(0):
+	# 	print(_terrain_lookup[0][0])
+
+func _calculate_tile_bitmask(tile_data: TileData) -> int:
+	var mode = _tile_set.get_terrain_set_mode(tile_data.terrain_set)
+	var t_id = tile_data.terrain
+	
+	# 检查各方向是否连接
+	# 注意：Godot 的 bit 定义与 auto_tile.gd 中的顺序可能一致，我们需要标准化
+	# 这里的顺序参考 auto_tile.gd: Left, BL, B, BR, R, TR, T, TL
+	
+	var left = tile_data.get_terrain_peering_bit(TileSet.CELL_NEIGHBOR_LEFT_SIDE) == t_id
+	var right = tile_data.get_terrain_peering_bit(TileSet.CELL_NEIGHBOR_RIGHT_SIDE) == t_id
+	var top = tile_data.get_terrain_peering_bit(TileSet.CELL_NEIGHBOR_TOP_SIDE) == t_id
+	var bottom = tile_data.get_terrain_peering_bit(TileSet.CELL_NEIGHBOR_BOTTOM_SIDE) == t_id
+	
+	var top_left = false
+	var top_right = false
+	var bottom_left = false
+	var bottom_right = false
+	
+	if mode == TileSet.TERRAIN_MODE_MATCH_CORNERS_AND_SIDES:
+		top_left = tile_data.get_terrain_peering_bit(TileSet.CELL_NEIGHBOR_TOP_LEFT_CORNER) == t_id
+		top_right = tile_data.get_terrain_peering_bit(TileSet.CELL_NEIGHBOR_TOP_RIGHT_CORNER) == t_id
+		bottom_left = tile_data.get_terrain_peering_bit(TileSet.CELL_NEIGHBOR_BOTTOM_LEFT_CORNER) == t_id
+		bottom_right = tile_data.get_terrain_peering_bit(TileSet.CELL_NEIGHBOR_BOTTOM_RIGHT_CORNER) == t_id
+	
+	# 标准化：角连接必须依赖边连接
+	if top_left: top_left = top and left
+	if top_right: top_right = top and right
+	if bottom_left: bottom_left = bottom and left
+	if bottom_right: bottom_right = bottom and right
+	
+	# 构建整数 ID
+	var id = 0
+	if left: id |= _C.BIT_LEFT
+	if bottom_left: id |= _C.BIT_BOTTOM_LEFT
+	if bottom: id |= _C.BIT_BOTTOM
+	if bottom_right: id |= _C.BIT_BOTTOM_RIGHT
+	if right: id |= _C.BIT_RIGHT
+	if top_right: id |= _C.BIT_TOP_RIGHT
+	if top: id |= _C.BIT_TOP
+	if top_left: id |= _C.BIT_TOP_LEFT
+	return id
+
+# =============================================================================
+# 线程任务
+# =============================================================================
+
+func _calculate_visuals_task(coord: Vector2i, data: ChunkData) -> void:
+	# print("[GlobalMapController] Starting visual calculation for chunk %s" % coord)
+	var result = {
+		"coord": coord,
+		"ground": {
+			"cells": [] as Array[Vector2i],
+			"sources": [] as Array[int],
+			"coords": [] as Array[Vector2i],
+			"alts": [] as Array[int]
+		},
+		"objects": {}
+	}
+	
+	# 1. 计算地形 (0..31)
+	for y in range(_C.CHUNK_SIZE):
+		for x in range(_C.CHUNK_SIZE):
+			var t_id = data.get_terrain(x, y)
+			if t_id == -1: continue
+			
+			# 获取周围信息 (从 padding 读取)
+			var bitmask = _get_terrain_bitmask_at(data, x, y, t_id)
+			
+			# 查表
+			var tile_info = _lookup_terrain_tile(_C.TERRAIN_SET_GROUND, t_id, bitmask)
+			if tile_info:
+				# 检查坐标是否有效 (简单的范围检查，假设 atlas 不会超过 100x100)
+				if tile_info.atlas.x > 100 or tile_info.atlas.y > 100:
+					print("[GlobalMapController] Suspicious atlas coord found: %s for t_id=%s, mask=%s" % [tile_info.atlas, t_id, bitmask])
+				
+				result.ground.cells.append(Vector2i(x, y))
+				result.ground.sources.append(tile_info.source)
+				result.ground.coords.append(tile_info.atlas)
+				result.ground.alts.append(tile_info.alt)
+			else:
+				# print("[GlobalMapController] No tile found for t_set=%s, t_id=%s, bitmask=%s at %s" % [_C.TERRAIN_SET_GROUND, t_id, bitmask, Vector2i(x, y)])
+				pass
+	
+	# 2. 计算物体
+	for packed_key in data.object_map:
+		var obj_id = data.object_map[packed_key]
+		var unpacked = _MapUtils.unpack_coord(packed_key) # {x, y, z}
+		
+		var res = _C.OBJECT_RESOURCE_TABLE.get(obj_id)
+		if res and res.source_id != -1:
+			var layer_id = unpacked.z
+			if not result.objects.has(layer_id):
+				result.objects[layer_id] = []
+			
+			result.objects[layer_id].append({
+				"cell": Vector2i(unpacked.x, unpacked.y),
+				"source": res.source_id,
+				"coord": res.atlas
+			})
+	
+	# 回调主线程
+	# print("[GlobalMapController] Visuals calculated for %s. Ground cells: %s" % [coord, result.ground.cells.size()])
+	call_deferred("_on_visuals_calculated", result)
+
+
+func _get_terrain_bitmask_at(data: ChunkData, x: int, y: int, center_id: int) -> int:
+	# 检查 8 邻居
+	var left = data.get_terrain(x - 1, y) == center_id
+	var right = data.get_terrain(x + 1, y) == center_id
+	var top = data.get_terrain(x, y - 1) == center_id
+	var bottom = data.get_terrain(x, y + 1) == center_id
+	
+	var top_left = data.get_terrain(x - 1, y - 1) == center_id
+	var top_right = data.get_terrain(x + 1, y - 1) == center_id
+	var bottom_left = data.get_terrain(x - 1, y + 1) == center_id
+	var bottom_right = data.get_terrain(x + 1, y + 1) == center_id
+	
+	# 标准化
+	if top_left: top_left = top and left
+	if top_right: top_right = top and right
+	if bottom_left: bottom_left = bottom and left
+	if bottom_right: bottom_right = bottom and right
+	
+	var id = 0
+	if left: id |= _C.BIT_LEFT
+	if bottom_left: id |= _C.BIT_BOTTOM_LEFT
+	if bottom: id |= _C.BIT_BOTTOM
+	if bottom_right: id |= _C.BIT_BOTTOM_RIGHT
+	if right: id |= _C.BIT_RIGHT
+	if top_right: id |= _C.BIT_TOP_RIGHT
+	if top: id |= _C.BIT_TOP
+	if top_left: id |= _C.BIT_TOP_LEFT
+	
+	return id
+
+
+func _lookup_terrain_tile(t_set: int, t_id: int, bitmask: int):
+	if _terrain_lookup.has(t_set) and _terrain_lookup[t_set].has(t_id):
+		var tiles = _terrain_lookup[t_set][t_id]
+		if tiles.has(bitmask):
+			return tiles[bitmask]
+		# 如果找不到精确匹配，可以尝试 fallback (例如只有中心块)
+		# Bitmask 0 (无连接) 通常代表单块
+		if tiles.has(0): return tiles[0]
+	return null
+
+
+# =============================================================================
+# 回调
+# =============================================================================
+
+func _on_visuals_calculated(result: Dictionary) -> void:
+	var coord = result.coord
+	_calculating_tasks.erase(coord)
+	
+	# 如果在计算期间区块被清除了（例如玩家快速移动），则丢弃结果
+	# 但这里我们没有 active_chunks 标记"pending"，所以主要检查是否需要
+	# 简单的策略：直接创建。WorldManager 会负责管理它的生命周期（如果不需要了会调 clear_chunk）
+	# 不过如果 active_chunks 已经有了（理论上不应该），则覆盖
+	
+	if active_chunks.has(coord):
+		active_chunks[coord].queue_free()
+	
+	# 实例化 ChunkVisual
+	var visual = _ChunkVisual.new(_tile_set)
+	visual.position = Vector2(coord.x * _C.CHUNK_SIZE_PIXELS, coord.y * _C.CHUNK_SIZE_PIXELS)
+	add_child(visual)
+	
+	# 应用数据
+	visual.apply_visual_data(result)
+	
+	active_chunks[coord] = visual
+	print("[GlobalMapController] Chunk %s rendered. Visual node: %s" % [coord, visual])

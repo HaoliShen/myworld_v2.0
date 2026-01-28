@@ -26,7 +26,7 @@ const _C = preload("res://Scripts/data/Constants.gd")
 const _MapUtils = preload("res://Scripts/data/MapUtils.gd")
 const _ChunkData = preload("res://Scripts/data/ChunkData.gd")
 const _ChunkLogic = preload("res://Scripts/components/ChunkLogic.gd")
-const _ShadowChunkRenderer = preload("res://Scripts/components/ShadowChunkRenderer.gd")
+
 
 # =============================================================================
 # 信号 (Signals)
@@ -42,13 +42,13 @@ signal loading_progress(current: int, total: int)
 # 定义四级加载流水线的半径范围（单位：区块 Chunk）
 # 使用迟滞区间 (Hysteresis) 防止边界抖动
 
-## 活跃区半径 (3x3): 逻辑节点存在，视觉可见
+## 活跃区半径: 逻辑节点存在，视觉可见
 const RADIUS_ACTIVE: int = _C.ACTIVE_LOAD_RADIUS  # 1
 
-## 就绪区半径 (5x5): 数据已加载，TileMap 已渲染，但逻辑节点不存在
+## 就绪区半径: 数据已加载，TileMap 已渲染，但逻辑节点不存在
 const RADIUS_READY: int = _C.READY_LOAD_RADIUS  # 2
 
-## 数据区半径 (17x17): ChunkData 驻留内存，但没有任何视觉表现
+## 数据区半径: ChunkData 驻留内存，但没有任何视觉表现
 const RADIUS_DATA: int = _C.DATA_LOAD_RADIUS  # 8
 
 ## 卸载区半径: 超出此范围的数据将被清理
@@ -64,8 +64,7 @@ const RADIUS_UNLOAD: int = _C.DATA_UNLOAD_RADIUS  # 10
 ## GlobalMapController 引用 (环境渲染控制器)
 var _map_controller = null
 
-## ShadowChunkRenderer 引用 (影子图层渲染器)
-var _shadow_renderer: _ShadowChunkRenderer = null
+
 
 # =============================================================================
 # 核心属性 (Core Properties)
@@ -141,71 +140,7 @@ func _process(_delta: float) -> void:
 	if not _is_initialized:
 		return
 
-	# [影子渲染] 处理影子数据应用队列
-	if not _shadow_apply_queue.is_empty():
-		var frame_start = Time.get_ticks_usec()
-		var time_budget_us = 3000 # 3ms 时间预算
-		
-		# print("[DEBUG] _process - Shadow apply queue size: %d, MAX_CHUNKS_PER_FRAME: %d" % [_shadow_apply_queue.size(), MAX_CHUNKS_PER_FRAME])
-		var processed_count = 0
-		var chunks_applied_this_frame: Array[Vector2i] = []
-		
-		while not _shadow_apply_queue.is_empty():
-			# 检查时间预算
-			var current_time = Time.get_ticks_usec()
-			if (current_time - frame_start) > time_budget_us:
-				# print("[DEBUG] _process - Time budget exceeded (%d us), deferring remaining tasks" % (current_time - frame_start))
-				break
-			
-			var shadow_data = _shadow_apply_queue.pop_front()
-			var coord: Vector2i = shadow_data["coord"]
-			
-			# 再次检查数据是否存在
-			if loaded_data.has(coord):
-				# print("[DEBUG] _process - Applying shadow chunk: %s (queue remaining: %d)" % [coord, _shadow_apply_queue.size()])
-				# var apply_start = Time.get_ticks_usec()
-				
-				# 快速应用影子数据
-				_map_controller.apply_shadow_chunk(shadow_data)
-				rendered_chunks[coord] = true
-				chunks_applied_this_frame.append(coord)
-				
-				# 返还影子图层到池
-				if _shadow_renderer:
-					_shadow_renderer.return_shadow_layer(shadow_data["shadow_ground"])
-				
-				# var apply_end = Time.get_ticks_usec()
-				# print("[DEBUG] _process - Shadow chunk %s applied in %d us (%.2f ms)" % [coord, apply_end - apply_start, (apply_end - apply_start) / 1000.0])
-				
-				# 如果需要生成逻辑
-				var distance := _MapUtils.chebyshev_distance(coord, _player_chunk)
-				if distance <= RADIUS_ACTIVE:
-					_spawn_chunk_logic(coord)
-			
-			processed_count += 1
-		
-		var frame_end = Time.get_ticks_usec()
-		# print("[DEBUG] _process - Shadow apply completed: %d chunks in %d us (%.2f ms)\n" % [processed_count, frame_end - frame_start, (frame_end - frame_start) / 1000.0])
-		
-		# 立即更新本帧所有应用区块的边界，确保没有视觉裂缝
-		# 注意：这里假设边界更新也包含在时间预算策略内，但为了防止视觉撕裂，本帧渲染的区块必须在本帧更新边界
-		#if not chunks_applied_this_frame.is_empty():
-			## print("[DEBUG] _process - Updating boundaries for %d chunks applied this frame" % chunks_applied_this_frame.size())
-			#_map_controller.update_chunk_boundaries(chunks_applied_this_frame)
 	
-	# [已移除] 批量处理边界更新 (不再使用 _pending_boundary_update)
-	# if _pending_boundary_update.size() >= BOUNDARY_UPDATE_BATCH_SIZE:
-	# 	var batch := _pending_boundary_update.slice(0, BOUNDARY_UPDATE_BATCH_SIZE)
-	# 	_pending_boundary_update = _pending_boundary_update.slice(BOUNDARY_UPDATE_BATCH_SIZE)
-	# 	
-	# 	print("[DEBUG] _process - Updating boundaries for %d chunks" % batch.size())
-	# 	_map_controller.update_chunk_boundaries(batch)
-
-	# 定期检查区块加载状态 (可以考虑降低频率或响应信号触发)
-	# 当前设计: 每帧检查，实际项目中可能需要优化
-	pass
-
-
 # =============================================================================
 # 初始化 (Initialization)
 # =============================================================================
@@ -223,15 +158,6 @@ func initialize_world(seed: int) -> void:
 	_map_controller = get_node_or_null("/root/World/Environment")
 	if _map_controller == null:
 		push_error("WorldManager: Failed to get GlobalMapController reference")
-		return
-
-	# 初始化影子渲染器
-	if _map_controller._ground_layer and _map_controller._ground_layer.tile_set:
-		_shadow_renderer = _ShadowChunkRenderer.new(_map_controller._ground_layer.tile_set)
-		_shadow_renderer.shadow_chunk_ready.connect(_on_shadow_chunk_ready)
-		print("[WorldManager] ShadowChunkRenderer initialized")
-	else:
-		push_error("WorldManager: Failed to initialize ShadowChunkRenderer - no tileset")
 		return
 
 	_is_initialized = true
@@ -428,17 +354,17 @@ func update_chunks(player_chunk_coord: Vector2i) -> void:
 
 	# 请求加载数据 (异步)
 	for coord in chunks_to_load_data:
-		print("[WorldManager] Requesting chunk data for: %s" % coord)
+		#print("[WorldManager] Requesting chunk data for: %s" % coord)
 		_request_chunk_data(coord)
 
-	# 渲染 (需要数据已加载) - 使用影子渲染器
-	for coord in chunks_to_render:
-		if loaded_data.has(coord):
-			print("[WorldManager] Requesting shadow render for chunk: %s" % coord)
-			if _shadow_renderer:
-				_shadow_renderer.request_render(coord, loaded_data[coord], player_chunk_coord)
-			else:
-				push_error("[WorldManager] ShadowChunkRenderer not initialized")
+	## 渲染 (需要数据已加载) - 使用影子渲染器
+	#for coord in chunks_to_render:
+		#if loaded_data.has(coord):
+			#print("[WorldManager] Requesting shadow render for chunk: %s" % coord)
+			#if _shadow_renderer:
+				#_shadow_renderer.request_render(coord, loaded_data[coord], player_chunk_coord)
+			#else:
+				#push_error("[WorldManager] ShadowChunkRenderer not initialized")
 
 	# 生成逻辑节点 (需要已渲染)
 	for coord in chunks_to_spawn_logic:
@@ -618,16 +544,16 @@ func _on_chunk_data_ready(coord: Vector2i, data) -> void:
 	# 4. 重新评估目标状态
 	var distance := _MapUtils.chebyshev_distance(coord, _player_chunk)
 
-	if distance <= RADIUS_READY:
-		# 使用影子渲染器
-		if not _is_chunk_rendered(coord):
-			print("[WorldManager] Data ready, requesting shadow render for chunk: %s" % coord)
-			if _shadow_renderer:
-				_shadow_renderer.request_render(coord, data, _player_chunk)
-			else:
-				push_error("[WorldManager] ShadowChunkRenderer not initialized")
-	# else: Data 状态，数据已在内存中，无需额外操作
-
+	#if distance <= RADIUS_READY:
+		## 使用影子渲染器
+		#if not _is_chunk_rendered(coord):
+			#print("[WorldManager] Data ready, requesting shadow render for chunk: %s" % coord)
+			#if _shadow_renderer:
+				#_shadow_renderer.request_render(coord, data, _player_chunk)
+			#else:
+				#push_error("[WorldManager] ShadowChunkRenderer not initialized")
+	## else: Data 状态，数据已在内存中，无需额外操作
+	_map_controller.render_chunk(coord, data)
 
 ## [已废弃] 旧的直接渲染方法，保留作为备用
 ## 现在使用影子渲染器异步渲染
