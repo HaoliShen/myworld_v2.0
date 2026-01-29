@@ -3,22 +3,10 @@
 ## 路径: res://Scripts/Managers/WorldManager.gd
 ## 挂载节点: World/Managers/WorldManager
 ## 继承: Node
-## 依赖组件:
-##   - WorkerThreadPool (用于分发后台 IO/生成任务)
-##   - MapGenerator (子节点，地图生成组件)
-##   - ChunkLogic (动态实例化的逻辑节点)
-##   - GlobalMapController (环境渲染控制器)
-##   - 依赖单例: SignalBus, RegionDatabase
 ##
 ## 职责:
 ## 它是整个开放世界的"心脏"，负责协调内存数据、磁盘存储和显存渲染之间的流动。
-## 它不直接处理具体的渲染或生成算法，而是调度各组件协同工作，
-## 确保玩家周围的世界始终处于正确的加载状态。
-##
-## 1. 数据持有 (Data Holder): 维护全局唯一的内存数据字典 loaded_data
-## 2. 流水线调度 (Pipeline Scheduler): 基于玩家位置，驱动区块在 Active/Ready/Data/Disk 四种状态间流转
-## 3. 渲染指令 (Rendering Command): 指挥 GlobalMapController 进行绘图和擦除
-## 4. 持久化管理 (Persistence): 收集脏数据并调度后台写入任务
+## 它不直接处理具体的渲染或生成算法，而是调度各组件协同工作。
 extends Node
 
 # 预加载依赖的类
@@ -26,7 +14,6 @@ const _C = preload("res://Scripts/data/Constants.gd")
 const _MapUtils = preload("res://Scripts/data/MapUtils.gd")
 const _ChunkData = preload("res://Scripts/data/ChunkData.gd")
 const _ChunkLogic = preload("res://Scripts/components/ChunkLogic.gd")
-
 
 # =============================================================================
 # 信号 (Signals)
@@ -39,20 +26,11 @@ signal loading_progress(current: int, total: int)
 # =============================================================================
 # 配置常量 (Configuration)
 # =============================================================================
-# 定义四级加载流水线的半径范围（单位：区块 Chunk）
-# 使用迟滞区间 (Hysteresis) 防止边界抖动
 
-## 活跃区半径: 逻辑节点存在，视觉可见
-const RADIUS_ACTIVE: int = _C.ACTIVE_LOAD_RADIUS  # 1
-
-## 就绪区半径: 数据已加载，TileMap 已渲染，但逻辑节点不存在
-const RADIUS_READY: int = _C.READY_LOAD_RADIUS  # 2
-
-## 数据区半径: ChunkData 驻留内存，但没有任何视觉表现
-const RADIUS_DATA: int = _C.DATA_LOAD_RADIUS  # 8
-
-## 卸载区半径: 超出此范围的数据将被清理
-const RADIUS_UNLOAD: int = _C.DATA_UNLOAD_RADIUS  # 10
+const RADIUS_ACTIVE: int = _C.ACTIVE_LOAD_RADIUS
+const RADIUS_READY: int = _C.READY_LOAD_RADIUS
+const RADIUS_DATA: int = _C.DATA_LOAD_RADIUS
+const RADIUS_UNLOAD: int = _C.DATA_UNLOAD_RADIUS
 
 # =============================================================================
 # 节点引用 (Node References)
@@ -64,8 +42,6 @@ const RADIUS_UNLOAD: int = _C.DATA_UNLOAD_RADIUS  # 10
 ## GlobalMapController 引用 (环境渲染控制器)
 var _map_controller = null
 
-
-
 # =============================================================================
 # 核心属性 (Core Properties)
 # =============================================================================
@@ -75,15 +51,12 @@ var _map_controller = null
 var loaded_data: Dictionary = {}
 
 ## 当前活跃的逻辑节点字典
-## Key: Vector2i (区块坐标) -> Value: ChunkLogic (场景节点)
 var active_nodes: Dictionary = {}
 
-## 已渲染的区块字典
-## Key: Vector2i (区块坐标) -> Value: bool
-var rendered_chunks: Dictionary = {}
+## 已渲染的区块字典 (不再手动维护，直接查询 GlobalMapController)
+# var rendered_chunks: Dictionary = {}
 
-## 正在加载中的区块集合 (防止重复请求)
-## Key: Vector2i -> Value: bool
+## 正在加载中的区块集合
 var _pending_loads: Dictionary = {}
 
 ## 当前玩家所在区块
@@ -95,32 +68,9 @@ var _is_initialized: bool = false
 ## 世界种子
 var _world_seed: int = 0
 
-## [优化] 区块渲染队列
-## 用于分帧渲染，避免一帧内渲染过多区块导致卡顿
-var _chunk_render_queue: Array[Vector2i] = []
-
-## [优化] 每帧最大渲染区块数 (使用影子渲染后可以提高)
-const MAX_CHUNKS_PER_FRAME: int = 3
-
-## [影子渲染] 待应用的影子数据队列
-var _shadow_apply_queue: Array[Dictionary] = []
-
-## [影子渲染] 已渲染但待边界更新的区块
-var _pending_boundary_update: Array[Vector2i] = []
-
-## [影子渲染] 边界更新批次大小
-const BOUNDARY_UPDATE_BATCH_SIZE: int = 5
-
-# =============================================================================
-# 预加载资源 (Preloaded Resources)
-# =============================================================================
-
+## 预加载资源
 const ChunkLogicScene: PackedScene = preload("res://Scenes/Entities/ChunkLogic.tscn")
 const PlayerScene: PackedScene = preload("res://Scenes/Entities/Player.tscn")
-
-# =============================================================================
-# 玩家引用 (Player Reference)
-# =============================================================================
 
 ## 玩家节点引用
 var _player: Node2D = null
@@ -131,22 +81,17 @@ var _player: Node2D = null
 
 func _ready() -> void:
 	_connect_signals()
-	# [修复] 使用 call_deferred 确保 Environment 节点（GlobalMapController）已完成初始化
-	# 因为 WorldManager 在场景树中位于 Environment 之前，其 _ready 会先执行
 	call_deferred("_startup_world")
-
 
 func _process(_delta: float) -> void:
 	if not _is_initialized:
 		return
+	# 可以在这里添加定期的状态检查或垃圾回收
 
-	
 # =============================================================================
 # 初始化 (Initialization)
 # =============================================================================
 
-## 初始化世界
-## @param seed: 世界种子
 func initialize_world(seed: int) -> void:
 	_world_seed = seed
 
@@ -159,85 +104,50 @@ func initialize_world(seed: int) -> void:
 	if _map_controller == null:
 		push_error("WorldManager: Failed to get GlobalMapController reference")
 		return
+	
+	# 注入自身引用
+	if "world_manager" in _map_controller:
+		_map_controller.world_manager = self
 
 	_is_initialized = true
 	world_initialized.emit(seed)
 	SignalBus.world_initialized.emit(seed)
 
 
-## 连接信号
 func _connect_signals() -> void:
-	print("[WorldManager] Connecting signals...")
 	SignalBus.player_chunk_changed.connect(_on_player_chunk_changed)
-	print("[WorldManager] Connected to SignalBus.player_chunk_changed")
 	SignalBus.chunk_modified.connect(_on_chunk_modified)
-	print("[WorldManager] Connected to SignalBus.chunk_modified")
-	print("[WorldManager] All signals connected successfully")
 
 
-## 世界启动入口 (Startup Entry Point)
-## 由 _ready() 调用，执行完整的游戏关卡启动流程
-## 流程:
-## 1. 存档上下文检查 (Debug Fallback)
-## 2. 数据库初始化
-## 3. 玩家生成
-## 4. 启动流式加载
 func _startup_world() -> void:
-	# =========================================================================
-	# 1. 存档上下文检查 (Debug Fallback)
-	# =========================================================================
-	# 检查 SaveSystem.current_world_name 是否为空
-	# 如果为空（说明是直接运行场景，非主菜单进入），加载/创建调试世界
 	if SaveSystem.current_world_name.is_empty():
 		SaveSystem.load_or_create_debug_world()
 
-	# =========================================================================
-	# 2. 初始化世界
-	# =========================================================================
-	# 使用 SaveSystem 中的种子初始化世界
 	initialize_world(SaveSystem.world_seed)
 
 	if not _is_initialized:
 		push_error("WorldManager: Failed to initialize world")
 		return
 
-	# =========================================================================
-	# 3. 玩家生成 (Spawn Player)
-	# =========================================================================
-	# 简化逻辑：暂不读取数据库中的玩家旧位置，直接使用默认坐标
 	var spawn_pos := Vector2(0, 0)
-
-	# 加载并实例化 Player
 	_player = PlayerScene.instantiate()
 	_player.global_position = spawn_pos
 
-	# 获取 EntityContainer 并添加玩家
 	var entity_container := get_node_or_null("/root/World/Environment/EntityContainer")
 	if entity_container == null:
-		# 尝试使用 Unique Name 访问
 		entity_container = get_tree().current_scene.get_node_or_null("%EntityContainer")
 
 	if entity_container:
 		entity_container.add_child(_player)
 	else:
-		push_error("WorldManager: EntityContainer not found, adding player to Environment")
 		_map_controller.add_child(_player)
 
-	# 将玩家引用传给 InteractionManager
 	var interaction_manager = get_node_or_null("/root/World/Managers/InteractionManager")
 	if interaction_manager:
 		interaction_manager.set_player(_player)
 
-	# =========================================================================
-	# 4. 启动流式加载 (Kickoff)
-	# =========================================================================
-	# 计算玩家所在的区块坐标
 	var start_chunk := _MapUtils.world_to_chunk(spawn_pos)
-
-	# 强制刷新一次周围环境
 	update_chunks(start_chunk)
-
-	# 发送世界就绪信号
 	world_ready.emit()
 
 
@@ -245,19 +155,10 @@ func _startup_world() -> void:
 # 核心调度逻辑 (Core Loop)
 # =============================================================================
 
-## 更新区块状态 (Core Loop)
-## 通常由 _process 每隔几帧调用，或者响应 SignalBus.player_entered_new_chunk 信号调用。
-## 职责:
-## 1. 获取玩家当前的区块坐标 (center_chunk)
-## 2. 遍历以 center_chunk 为中心，RADIUS_UNLOAD 为半径的矩形区域
-## 3. 对每个坐标点，计算其目标状态 (Active/Ready/Data/Disk)
-## 4. 对比当前状态，执行状态迁移操作 (Load Data / Render / Spawn Logic / Unload)
-## @param player_chunk_coord: 玩家当前所在的区块坐标
 func update_chunks(player_chunk_coord: Vector2i) -> void:
-	print("[WorldManager] update_chunks called for player at chunk: %s" % player_chunk_coord)
+	print("[WorldManager] update_chunks: %s" % player_chunk_coord)
 	_player_chunk = player_chunk_coord
 
-	# 收集需要进行状态迁移的区块
 	var chunks_to_load_data: Array[Vector2i] = []
 	var chunks_to_render: Array[Vector2i] = []
 	var chunks_to_spawn_logic: Array[Vector2i] = []
@@ -265,127 +166,72 @@ func update_chunks(player_chunk_coord: Vector2i) -> void:
 	var chunks_to_unrender: Array[Vector2i] = []
 	var chunks_to_unload_data: Array[Vector2i] = []
 
-	# 计算各层级需要的区块
 	var active_range := _MapUtils.get_chunks_in_radius(player_chunk_coord, _C.ACTIVE_LOAD_RADIUS)
 	var ready_range := _MapUtils.get_chunks_in_radius(player_chunk_coord, _C.READY_LOAD_RADIUS)
 	var data_range := _MapUtils.get_chunks_in_radius(player_chunk_coord, _C.DATA_LOAD_RADIUS)
 	
-	print("\n========== UPDATE CHUNKS ==========")
-	print("[WorldManager] Player chunk coord: %s" % player_chunk_coord)
-	print("[WorldManager] Load radii - ACTIVE: %d, READY: %d, DATA: %d" % [_C.ACTIVE_LOAD_RADIUS, _C.READY_LOAD_RADIUS, _C.DATA_LOAD_RADIUS])
-	print("[WorldManager] Unload radii - ACTIVE: %d, READY: %d, DATA: %d" % [_C.ACTIVE_UNLOAD_RADIUS, _C.READY_UNLOAD_RADIUS, RADIUS_UNLOAD])
-	print("[WorldManager] Range sizes - Active: %d, Ready: %d, Data: %d" % [active_range.size(), ready_range.size(), data_range.size()])
-	print("[WorldManager] Current state - loaded_data: %d, rendered_chunks: %d, active_nodes: %d" % [loaded_data.size(), rendered_chunks.size(), active_nodes.size()])
-
-	# 1. 确定需要加载数据的区块 (进入 DATA 层)
+	# 1. DATA
 	for coord in data_range:
 		if not loaded_data.has(coord) and not _pending_loads.has(coord):
 			chunks_to_load_data.append(coord)
 
-	# 2. 确定需要渲染的区块 (进入 READY 层)
+	# 2. READY
 	for coord in ready_range:
-		if loaded_data.has(coord) and not _is_chunk_rendered(coord):
+		if loaded_data.has(coord):
+			# 只要数据加载了，就尝试渲染。
+			# GlobalMapController 会自己判断是否已经渲染过 (active_chunks.has)
+			# 如果已经在渲染中 (calculating_tasks)，它也会忽略
 			chunks_to_render.append(coord)
 
-	# 3. 确定需要生成逻辑节点的区块 (进入 ACTIVE 层)
+	# 3. ACTIVE
 	for coord in active_range:
 		if loaded_data.has(coord) and not active_nodes.has(coord):
-			# 确保已渲染
-			if not _is_chunk_rendered(coord):
-				chunks_to_render.append(coord)
+			# 同上
+			chunks_to_render.append(coord)
 			chunks_to_spawn_logic.append(coord)
 
-	# 4. 确定需要销毁逻辑节点的区块 (离开 ACTIVE 层)
+	# 4. LEAVE ACTIVE
 	for coord in active_nodes.keys():
 		var distance := _MapUtils.chebyshev_distance(coord, player_chunk_coord)
 		if distance > _C.ACTIVE_UNLOAD_RADIUS:
 			chunks_to_despawn_logic.append(coord)
 
-	# 5. 确定需要卸载渲染的区块 (离开 READY 层)
-	# 注意: 由于 ChunkLogic._exit_tree 会自动 clear_chunk，
-	# 这里只处理没有逻辑节点但有渲染的区块
+	# 5. LEAVE READY
 	for coord in loaded_data.keys():
-		# 如果当前没有逻辑节点，或者即将销毁逻辑节点，都视为非活跃
 		if not active_nodes.has(coord) or chunks_to_despawn_logic.has(coord):
 			var distance := _MapUtils.chebyshev_distance(coord, player_chunk_coord)
 			if distance > _C.READY_UNLOAD_RADIUS:
 				if _is_chunk_rendered(coord):
 					chunks_to_unrender.append(coord)
 
-	# 6. 确定需要完全卸载的区块 (离开 DATA 层)
+	# 6. LEAVE DATA
 	for coord in loaded_data.keys():
 		var distance := _MapUtils.chebyshev_distance(coord, player_chunk_coord)
 		if distance > RADIUS_UNLOAD:
 			chunks_to_unload_data.append(coord)
 
-	# 执行状态迁移 (按顺序)
-	# 先卸载，再加载，避免内存峰值
+	# 执行状态迁移
+	for coord in chunks_to_despawn_logic: _despawn_chunk_logic(coord)
+	for coord in chunks_to_unrender: _unload_chunk_visuals(coord)
+	for coord in chunks_to_unload_data: _unload_chunk_data(coord)
+	for coord in chunks_to_load_data: _request_chunk_data(coord)
 	
-	print("[WorldManager] State transitions - Despawn: %d, Unrender: %d, Unload: %d, Load: %d, Render: %d, Spawn: %d" % [
-		chunks_to_despawn_logic.size(), chunks_to_unrender.size(), chunks_to_unload_data.size(),
-		chunks_to_load_data.size(), chunks_to_render.size(), chunks_to_spawn_logic.size()
-	])
-	if chunks_to_load_data.size() > 0:
-		print("[WorldManager] Chunks to LOAD DATA: %s" % chunks_to_load_data)
-	if chunks_to_render.size() > 0:
-		print("[WorldManager] Chunks to RENDER: %s" % chunks_to_render)
-	if chunks_to_unrender.size() > 0:
-		print("[WorldManager] Chunks to UNRENDER: %s" % chunks_to_unrender)
-	if chunks_to_unload_data.size() > 0:
-		print("[WorldManager] Chunks to UNLOAD DATA: %s" % chunks_to_unload_data)
+	# 渲染 (直接调用 MapController)
+	for coord in chunks_to_render:
+		if loaded_data.has(coord):
+			_map_controller.render_chunk(coord, loaded_data[coord])
+			# rendered_chunks[coord] = true # 不再需要手动维护状态
 
-	# 卸载逻辑节点
-	for coord in chunks_to_despawn_logic:
-		var t_despawn = Time.get_ticks_usec()
-		_despawn_chunk_logic(coord)
-		print("[DEBUG] Unload profile: Despawn logic for %s took %d us" % [coord, Time.get_ticks_usec() - t_despawn])
-
-	# 卸载渲染
-	for coord in chunks_to_unrender:
-		var t_unrender = Time.get_ticks_usec()
-		_unload_chunk_visuals(coord)
-		print("[DEBUG] Unload profile: Unrender visuals for %s took %d us" % [coord, Time.get_ticks_usec() - t_unrender])
-
-	# 卸载数据
-	for coord in chunks_to_unload_data:
-		var t_unload_data = Time.get_ticks_usec()
-		_unload_chunk_data(coord)
-		print("[DEBUG] Unload profile: Unload data for %s took %d us" % [coord, Time.get_ticks_usec() - t_unload_data])
-
-	# 请求加载数据 (异步)
-	for coord in chunks_to_load_data:
-		#print("[WorldManager] Requesting chunk data for: %s" % coord)
-		_request_chunk_data(coord)
-
-	## 渲染 (需要数据已加载) - 使用影子渲染器
-	#for coord in chunks_to_render:
-		#if loaded_data.has(coord):
-			#print("[WorldManager] Requesting shadow render for chunk: %s" % coord)
-			#if _shadow_renderer:
-				#_shadow_renderer.request_render(coord, loaded_data[coord], player_chunk_coord)
-			#else:
-				#push_error("[WorldManager] ShadowChunkRenderer not initialized")
-
-	# 生成逻辑节点 (需要已渲染)
 	for coord in chunks_to_spawn_logic:
 		if loaded_data.has(coord):
-			print("[WorldManager] Spawning logic for chunk: %s" % coord)
 			_spawn_chunk_logic(coord)
 
 
-## 强制保存所有数据 (Blocking/High Priority)
-## 用于: 游戏退出前、手动存档时
-## 职责:
-## 1. 遍历 loaded_data 中所有标记为 is_dirty 的 ChunkData
-## 2. 将它们加入 RegionDatabase 的写入队列
-## 3. (可选) 触发 RegionDatabase 的事务提交
-## 4. 发送 SignalBus.game_save_completed 信号
 func force_save_all() -> void:
 	for coord in loaded_data.keys():
 		var chunk = loaded_data[coord]
 		if chunk and chunk.is_dirty:
 			RegionDatabase.save_chunk(chunk)
-
 	SignalBus.save_completed.emit()
 
 
@@ -393,304 +239,156 @@ func force_save_all() -> void:
 # 数据查询与交互 (Data Query & Interaction)
 # =============================================================================
 
-## 获取指定世界像素坐标处的区块数据对象
-## 用于: InteractionManager 查询地块属性、寻路系统获取权重等
-## @param global_pos: 世界坐标
-## @return: ChunkData 对象。如果该位置未加载 (处于 Data 层以外)，返回 null
 func get_chunk_data_at(global_pos: Vector2):
 	var chunk_coord := _MapUtils.world_to_chunk(global_pos)
 	return loaded_data.get(chunk_coord)
 
-
-## 获取指定区块坐标的区块数据对象
-## @param coord: 区块坐标
-## @return: ChunkData 对象，如果未加载返回 null
 func get_chunk_data(coord: Vector2i):
 	return loaded_data.get(coord)
 
-
-## [核心交互] 修改世界中的一个方块
-## 用于: 玩家建造、破坏、耕地等 Gameplay 逻辑
-## 职责:
-## 1. 将 global_pos 转换为 Chunk 坐标和内部 Tile 坐标
-## 2. 获取对应的 ChunkData (需确保已加载)
-## 3. 修改 ChunkData 中的数据 (set_terrain 或 set_object)，并自动标记 is_dirty = true
-## 4. 调用 GlobalMapController.set_cell_at 同步更新视觉表现
-## 5. 发送 SignalBus.block_changed 信号，供特效/音效系统响应
-## @param global_pos: 目标位置
-## @param layer: 目标层级 (Constants.Layer)
-## @param tile_id: 新的图块 ID
 func set_block_at(global_pos: Vector2, layer: int, tile_id: int) -> void:
-	# 1. 坐标转换
 	var tile_coord := _MapUtils.world_to_tile(global_pos)
 	var chunk_coord := _MapUtils.tile_to_chunk(tile_coord)
 	var local_coord := _MapUtils.tile_to_local(tile_coord)
 
-	# 2. 获取 ChunkData
 	var chunk = loaded_data.get(chunk_coord)
-	if chunk == null:
-		push_warning("WorldManager: Cannot set block at unloaded chunk %s" % chunk_coord)
-		return
+	if chunk == null: return
 
-	# 3. 修改数据 (自动标记 is_dirty)
+	# 修改本区块
 	match layer:
 		_C.Layer.GROUND:
 			chunk.set_terrain(local_coord.x, local_coord.y, tile_id)
 		_C.Layer.DECORATION, _C.Layer.OBSTACLE:
 			chunk.set_object(local_coord.x, local_coord.y, layer, tile_id)
 
-	# 4. 同步更新视觉
+	# 同步视觉
 	if _map_controller:
 		_map_controller.set_cell_at(global_pos, layer, tile_id)
 
-	# 5. 发送信号
+	# 信号
 	SignalBus.chunk_modified.emit(chunk_coord)
-	if tile_id == -1:
-		SignalBus.object_removed.emit(tile_coord, tile_id)
-	else:
-		SignalBus.object_placed.emit(tile_coord, tile_id)
+	if tile_id == -1: SignalBus.object_removed.emit(tile_coord, tile_id)
+	else: SignalBus.object_placed.emit(tile_coord, tile_id)
+	
+	# 同步邻居 Padding (仅地形层)
+	if layer == _C.Layer.GROUND:
+		_sync_neighbor_padding(chunk_coord, local_coord, tile_id)
 
 
-## 获取指定瓦片的高度
-## @param tile_coord: 全局瓦片坐标
-## @return: 高度值，如果未加载返回默认高度
+func _sync_neighbor_padding(chunk_coord: Vector2i, local: Vector2i, tile_id: int) -> void:
+	var x = local.x
+	var y = local.y
+	
+	# 检查4个方向的边界
+	if x == 0: _update_neighbor(chunk_coord + Vector2i.LEFT, 32, y, tile_id)
+	if x == 31: _update_neighbor(chunk_coord + Vector2i.RIGHT, -1, y, tile_id)
+	if y == 0: _update_neighbor(chunk_coord + Vector2i.UP, x, 32, tile_id)
+	if y == 31: _update_neighbor(chunk_coord + Vector2i.DOWN, x, -1, tile_id)
+	
+	# 检查4个角的边界
+	if x == 0 and y == 0: _update_neighbor(chunk_coord + Vector2i(-1, -1), 32, 32, tile_id)
+	if x == 31 and y == 0: _update_neighbor(chunk_coord + Vector2i(1, -1), -1, 32, tile_id)
+	if x == 0 and y == 31: _update_neighbor(chunk_coord + Vector2i(-1, 1), 32, -1, tile_id)
+	if x == 31 and y == 31: _update_neighbor(chunk_coord + Vector2i(1, 1), -1, -1, tile_id)
+
+func _update_neighbor(coord: Vector2i, x: int, y: int, val: int) -> void:
+	var chunk = loaded_data.get(coord)
+	if chunk:
+		chunk.set_terrain(x, y, val)
+		# 邻居数据改变，如果邻居已渲染，需要刷新以更新连接
+		if _is_chunk_rendered(coord):
+			_map_controller.render_chunk(coord, chunk)
+
 func get_elevation_at(tile_coord: Vector2i) -> int:
 	var chunk_coord := _MapUtils.tile_to_chunk(tile_coord)
 	var chunk = get_chunk_data(chunk_coord)
-
 	if chunk:
 		var local := _MapUtils.tile_to_local(tile_coord)
 		return chunk.get_elevation(local.x, local.y)
-
 	return _C.DEFAULT_ELEVATION
 
-
-## 设置玩家位置 (用于初始化)
-## @param world_pos: 玩家世界坐标
 func set_player_position(world_pos: Vector2) -> void:
 	_player_chunk = _MapUtils.world_to_chunk(world_pos)
 	update_chunks(_player_chunk)
 
-
-## 获取世界种子
 func get_world_seed() -> int:
 	return _world_seed
 
 
 # =============================================================================
-# 内部流程控制 (Internal / Callbacks)
+# 内部流程控制
 # =============================================================================
 
-## [异步回调] 请求加载区块数据
-## 逻辑:
-## 1. 检查 loaded_data 中是否已存在
-## 2. 若不存在，向 WorkerThreadPool 提交任务
-## 3. 标记 _pending_loads 防止重复提交
 func _request_chunk_data(coord: Vector2i) -> void:
-	# 防止重复请求
-	if loaded_data.has(coord) or _pending_loads.has(coord):
-		return
-
+	if loaded_data.has(coord) or _pending_loads.has(coord): return
 	_pending_loads[coord] = true
-
-	# 使用 WorkerThreadPool 进行后台加载
 	WorkerThreadPool.add_task(_load_chunk_task.bind(coord))
 
 
-## [线程任务] 后台加载/生成区块数据
-## @param coord: 区块坐标
 func _load_chunk_task(coord: Vector2i) -> void:
-	# print("[WorldManager] _load_chunk_task: Started for %s in thread %s" % [coord, OS.get_thread_caller_id()])
-	
-	# 1. 尝试从数据库加载
 	var chunk = RegionDatabase.load_chunk(coord)
-
-	# 2. 如果数据库中不存在，则生成新数据
-	# MapGenerator.generate_chunk 是纯计算且无副作用的，可以在多线程下安全运行
 	if chunk == null:
-		# print("[WorldManager] _load_chunk_task: Generating new chunk for %s" % coord)
 		chunk = map_generator.generate_chunk(coord)
-	# else:
-	# 	print("[WorldManager] _load_chunk_task: Loaded chunk from DB for %s" % coord)
-
-	# 3. 返回主线程处理结果
 	call_deferred("_on_chunk_data_ready", coord, chunk)
 
 
-## [异步回调] 区块数据加载/生成完成时调用
-## 注意: 此函数需通过 call_deferred 在主线程执行
-## @param coord: 区块坐标
-## @param data: 准备好的 ChunkData 对象
-## 职责:
-## 1. 清除 _pending_loads 标记
-## 2. 将 data 存入 loaded_data
-## 3. 立即重新评估该区块的目标状态 (因为加载期间玩家可能已经移动)
-## 4. 如果目标状态 >= Ready，调用 _render_chunk_visuals
-## 5. 如果目标状态 == Active，调用 _spawn_chunk_logic
 func _on_chunk_data_ready(coord: Vector2i, data) -> void:
-	# 1. 清除 pending 标记
 	_pending_loads.erase(coord)
-
-	if data == null:
-		push_error("WorldManager: Failed to load/generate chunk at %s" % coord)
-		return
-
-	# 2. 存入 loaded_data
+	if data == null: return
 	loaded_data[coord] = data
-
-	# 3. 发送信号
 	SignalBus.chunk_data_loaded.emit(coord)
 
-	# 4. 重新评估目标状态
 	var distance := _MapUtils.chebyshev_distance(coord, _player_chunk)
-
-	#if distance <= RADIUS_READY:
-		## 使用影子渲染器
-		#if not _is_chunk_rendered(coord):
-			#print("[WorldManager] Data ready, requesting shadow render for chunk: %s" % coord)
-			#if _shadow_renderer:
-				#_shadow_renderer.request_render(coord, data, _player_chunk)
-			#else:
-				#push_error("[WorldManager] ShadowChunkRenderer not initialized")
-	## else: Data 状态，数据已在内存中，无需额外操作
-	_map_controller.render_chunk(coord, data)
-
-## [已废弃] 旧的直接渲染方法，保留作为备用
-## 现在使用影子渲染器异步渲染
-func _render_chunk_visuals(coord: Vector2i, data) -> void:
-	if _map_controller == null:
-		push_error("WorldManager: GlobalMapController is null")
-		return
-
-	print("[DEBUG] _render_chunk_visuals - Using legacy render for chunk %s" % coord)
-	var t_start = Time.get_ticks_usec()
-	_map_controller.render_chunk(coord, data)
-	var t_end = Time.get_ticks_usec()
-	print("[DEBUG] _render_chunk_visuals - Completed render for chunk %s in %d us (%.2f ms)" % [coord, t_end - t_start, (t_end - t_start) / 1000.0])
-	rendered_chunks[coord] = true
+	if distance <= RADIUS_READY:
+		# if not _is_chunk_rendered(coord):
+		_map_controller.render_chunk(coord, data)
+		# rendered_chunks[coord] = true
 
 
-## [状态迁移] 卸载区块视觉
-## 职责: 调用 GlobalMapController.clear_chunk
 func _unload_chunk_visuals(coord: Vector2i) -> void:
-	if _map_controller == null:
-		return
-
-	_map_controller.clear_chunk(coord)
-	rendered_chunks.erase(coord)
+	if _map_controller: _map_controller.clear_chunk(coord)
+	# rendered_chunks.erase(coord)
 
 
-## [状态迁移] 生成逻辑节点
-## 职责: 实例化 ChunkLogic，设置坐标，并添加到 active_chunks_container
 func _spawn_chunk_logic(coord: Vector2i) -> void:
-	if active_nodes.has(coord):
-		return
-
-	# 实例化 ChunkLogic 节点
-	var chunk_node
-	if ChunkLogicScene:
-		chunk_node = ChunkLogicScene.instantiate()
-	else:
-		chunk_node = _ChunkLogic.new()
-
-	# 设置坐标和控制器引用
+	if active_nodes.has(coord): return
+	var chunk_node = ChunkLogicScene.instantiate() if ChunkLogicScene else _ChunkLogic.new()
 	chunk_node.setup(coord, _map_controller)
-
-	# 添加到容器
 	active_chunks_container.add_child(chunk_node)
 	active_nodes[coord] = chunk_node
-
-	# 发送信号
 	SignalBus.chunk_activated.emit(coord)
 
 
-## [状态迁移] 销毁逻辑节点
-## 职责: 在 active_nodes 中找到对应节点，调用 queue_free()
 func _despawn_chunk_logic(coord: Vector2i) -> void:
-	var t_start = Time.get_ticks_usec()
-	if not active_nodes.has(coord):
-		return
-
+	if not active_nodes.has(coord): return
 	var node = active_nodes[coord]
 	active_nodes.erase(coord)
-
-	if node and is_instance_valid(node):
-		# 注意: ChunkLogic._exit_tree 不再自动调用 clear_chunk
-		node.queue_free()
-
-	# 发送信号
+	if node and is_instance_valid(node): node.queue_free()
 	SignalBus.chunk_deactivated.emit(coord)
-	
-	print("[Profile] _despawn_chunk_logic %s Total: %d us" % [coord, Time.get_ticks_usec() - t_start])
 
 
-## [状态迁移] 完全卸载数据
-## 职责:
-## 1. 检查 ChunkData.is_dirty
-## 2. 若为脏数据，调用 RegionDatabase.save_chunk 发起后台写入
-## 3. 从 loaded_data 中移除对象，允许引用计数归零回收
 func _unload_chunk_data(coord: Vector2i) -> void:
 	var chunk = loaded_data.get(coord)
-
 	if chunk == null:
 		loaded_data.erase(coord)
 		return
-
-	# 如果有逻辑节点，先销毁
-	if active_nodes.has(coord):
-		_despawn_chunk_logic(coord)
-
-	# 如果有渲染，先清除
-	if _is_chunk_rendered(coord):
-		_unload_chunk_visuals(coord)
-
-	# 保存脏数据
-	if chunk.is_dirty:
-		RegionDatabase.save_chunk(chunk)
-
-	# 从缓存移除
+	if active_nodes.has(coord): _despawn_chunk_logic(coord)
+	if _is_chunk_rendered(coord): _unload_chunk_visuals(coord)
+	if chunk.is_dirty: RegionDatabase.save_chunk(chunk)
 	loaded_data.erase(coord)
-
-	# 发送信号
 	SignalBus.chunk_data_unloaded.emit(coord)
 
-
-## 检查区块是否已渲染
-## 简单实现: 如果有活跃节点或数据在 READY 范围内，认为已渲染
-## 实际项目可能需要更精确的跟踪
 func _is_chunk_rendered(coord: Vector2i) -> bool:
-	return rendered_chunks.has(coord)
-
+	if _map_controller:
+		return _map_controller.active_chunks.has(coord)
+	return false
 
 # =============================================================================
-# 信号处理 (Signal Handlers)
+# 信号处理
 # =============================================================================
 
-func _on_player_chunk_changed(_old_chunk: Vector2i, new_chunk: Vector2i) -> void:
-	var msg = "\n========== WORLDMANAGER SIGNAL RECEIVED ==========\n"
-	msg += "[WorldManager] Received player_chunk_changed signal: %s -> %s\n" % [_old_chunk, new_chunk]
-	msg += "[WorldManager] Calling update_chunks...\n"
-	print(msg)
-	push_warning(msg)
+func _on_player_chunk_changed(_old: Vector2i, new_chunk: Vector2i) -> void:
 	update_chunks(new_chunk)
-	print("[WorldManager] update_chunks completed")
-	print("==================================================\n")
 
-
-func _on_chunk_modified(chunk_coord: Vector2i) -> void:
-	# 区块被修改时，数据已经通过 set_block_at 标记为 dirty
-	# 这里可以做额外处理，如触发自动保存等
+func _on_chunk_modified(_coord: Vector2i) -> void:
 	pass
-
-
-## [影子渲染] 影子区块准备就绪回调
-func _on_shadow_chunk_ready(shadow_data: Dictionary) -> void:
-	var coord: Vector2i = shadow_data["coord"]
-	print("[WorldManager] Shadow chunk ready: %s, adding to apply queue" % coord)
-	
-	# 添加chunk_data引用以便导航更新
-	if loaded_data.has(coord):
-		shadow_data["chunk_data"] = loaded_data[coord]
-	
-	# 加入应用队列，在主线程的_process中处理
-	_shadow_apply_queue.append(shadow_data)
