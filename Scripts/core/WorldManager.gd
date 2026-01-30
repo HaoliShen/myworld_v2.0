@@ -30,7 +30,6 @@ signal loading_progress(current: int, total: int)
 const RADIUS_ACTIVE: int = _C.ACTIVE_LOAD_RADIUS
 const RADIUS_READY: int = _C.READY_LOAD_RADIUS
 const RADIUS_DATA: int = _C.DATA_LOAD_RADIUS
-const RADIUS_UNLOAD: int = _C.DATA_UNLOAD_RADIUS
 
 # =============================================================================
 # 节点引用 (Node References)
@@ -61,6 +60,9 @@ var _pending_loads: Dictionary = {}
 
 ## 当前玩家所在区块
 var _player_chunk: Vector2i = Vector2i.ZERO
+
+## 数据加载区域的中心区块 (实现滞后更新)
+var _data_load_center: Vector2i = Vector2i.ZERO
 
 ## 是否已初始化
 var _is_initialized: bool = false
@@ -156,8 +158,16 @@ func _startup_world() -> void:
 # =============================================================================
 
 func update_chunks(player_chunk_coord: Vector2i) -> void:
-	print("[WorldManager] update_chunks: %s" % player_chunk_coord)
+	# print("[WorldManager] update_chunks: %s" % player_chunk_coord)
 	_player_chunk = player_chunk_coord
+
+	# 检查是否需要更新数据中心
+	var dist_to_data_center := _MapUtils.chebyshev_distance(player_chunk_coord, _data_load_center)
+	var update_threshold := _C.DATA_LOAD_RADIUS - _C.DATA_UPDATE_THRESHOLD_OFFSET
+	
+	if dist_to_data_center >= update_threshold:
+		print("[WorldManager] Updating data center: %s -> %s" % [_data_load_center, player_chunk_coord])
+		_data_load_center = player_chunk_coord
 
 	var chunks_to_load_data: Array[Vector2i] = []
 	var chunks_to_render: Array[Vector2i] = []
@@ -168,64 +178,62 @@ func update_chunks(player_chunk_coord: Vector2i) -> void:
 
 	var active_range := _MapUtils.get_chunks_in_radius(player_chunk_coord, _C.ACTIVE_LOAD_RADIUS)
 	var ready_range := _MapUtils.get_chunks_in_radius(player_chunk_coord, _C.READY_LOAD_RADIUS)
-	var data_range := _MapUtils.get_chunks_in_radius(player_chunk_coord, _C.DATA_LOAD_RADIUS)
+	# 数据层使用滞后的中心点 _data_load_center
+	var data_range := _MapUtils.get_chunks_in_radius(_data_load_center, _C.DATA_LOAD_RADIUS)
 	
-	# 1. DATA
+	# 1. DATA (基于 _data_load_center)
 	for coord in data_range:
 		if not loaded_data.has(coord) and not _pending_loads.has(coord):
 			chunks_to_load_data.append(coord)
 
-	# 2. READY
+	# 2. READY (基于 player_chunk_coord)
 	for coord in ready_range:
 		if loaded_data.has(coord):
 			# 只要数据加载了，就尝试渲染。
-			# GlobalMapController 会自己判断是否已经渲染过 (active_chunks.has)
-			# 如果已经在渲染中 (calculating_tasks)，它也会忽略
 			chunks_to_render.append(coord)
 
-	# 3. ACTIVE
+	# 3. ACTIVE (基于 player_chunk_coord)
 	for coord in active_range:
 		if loaded_data.has(coord) and not active_nodes.has(coord):
-			# 同上
 			chunks_to_render.append(coord)
 			chunks_to_spawn_logic.append(coord)
 
-	# 4. LEAVE ACTIVE
+	# 4. LEAVE ACTIVE (基于 player_chunk_coord)
 	for coord in active_nodes.keys():
 		var distance := _MapUtils.chebyshev_distance(coord, player_chunk_coord)
-		if distance > _C.ACTIVE_UNLOAD_RADIUS:
+		if distance > _C.ACTIVE_LOAD_RADIUS:
 			chunks_to_despawn_logic.append(coord)
 
-	# 5. LEAVE READY
+	# 5. LEAVE READY (基于 player_chunk_coord)
 	for coord in loaded_data.keys():
 		if not active_nodes.has(coord) or chunks_to_despawn_logic.has(coord):
 			var distance := _MapUtils.chebyshev_distance(coord, player_chunk_coord)
-			if distance > _C.READY_UNLOAD_RADIUS:
+			if distance > _C.READY_LOAD_RADIUS:
 				if _is_chunk_rendered(coord):
 					chunks_to_unrender.append(coord)
 
-	# 6. LEAVE DATA
+	# 6. LEAVE DATA (基于 _data_load_center)
 	for coord in loaded_data.keys():
-		var distance := _MapUtils.chebyshev_distance(coord, player_chunk_coord)
-		if distance > RADIUS_UNLOAD:
+		var distance := _MapUtils.chebyshev_distance(coord, _data_load_center)
+		if distance > _C.DATA_LOAD_RADIUS:
 			chunks_to_unload_data.append(coord)
 
 	# 执行状态迁移
-	for coord in chunks_to_despawn_logic: _despawn_chunk_logic(coord)
-	for coord in chunks_to_unrender: _unload_chunk_visuals(coord)
-	for coord in chunks_to_unload_data: _unload_chunk_data(coord)
-	for coord in chunks_to_load_data: _request_chunk_data(coord)
+	for coord in chunks_to_despawn_logic: _despawn_chunk_logic(coord)#ok
+	for coord in chunks_to_unrender: _unload_chunk_visuals(coord)#ok
+	for coord in chunks_to_unload_data: _unload_chunk_data(coord)#ok
+	for coord in chunks_to_load_data: _request_chunk_data(coord)#seems ok,no clear improvement
 	
 	# 渲染 (直接调用 MapController)
 	for coord in chunks_to_render:
 		if loaded_data.has(coord):
 			_map_controller.render_chunk(coord, loaded_data[coord])
 			# rendered_chunks[coord] = true # 不再需要手动维护状态
-
+	
 	for coord in chunks_to_spawn_logic:
 		if loaded_data.has(coord):
 			_spawn_chunk_logic(coord)
-
+	
 
 func force_save_all() -> void:
 	for coord in loaded_data.keys():
@@ -389,6 +397,7 @@ func _is_chunk_rendered(coord: Vector2i) -> bool:
 
 func _on_player_chunk_changed(_old: Vector2i, new_chunk: Vector2i) -> void:
 	update_chunks(new_chunk)
+
 
 func _on_chunk_modified(_coord: Vector2i) -> void:
 	pass

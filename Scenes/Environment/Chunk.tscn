@@ -1,0 +1,34 @@
+[gd_scene load_steps=4 format=3 uid="uid://co8awnry41a3"]
+
+[ext_resource type="TileSet" uid="uid://d3cyvm6xn5ov1" path="res://Assets/Tilesets/test_tileset.tres" id="1_y3xke"]
+[ext_resource type="TileSet" uid="uid://e1cb042qyxy1" path="res://Assets/Tilesets/main_tileset.tres" id="2_anrwg"]
+[ext_resource type="Script" uid="uid://cij7bh8ghniuf" path="res://Scripts/components/ChunkVisual.gd" id="3_script"]
+
+[node name="root" type="Node2D"]
+script = ExtResource("3_script")
+
+[node name="GroundLayer" type="TileMapLayer" parent="."]
+z_index = -10
+tile_set = ExtResource("1_y3xke")
+occlusion_enabled = false
+collision_enabled = false
+navigation_enabled = false
+
+[node name="DecorationLayer" type="TileMapLayer" parent="."]
+y_sort_enabled = true
+occlusion_enabled = false
+collision_enabled = false
+navigation_enabled = false
+
+[node name="ObstacleLayer" type="TileMapLayer" parent="."]
+y_sort_enabled = true
+occlusion_enabled = false
+collision_enabled = false
+navigation_enabled = false
+
+[node name="NavigationLayer" type="TileMapLayer" parent="."]
+visible = false
+tile_set = ExtResource("2_anrwg")
+occlusion_enabled = false
+collision_enabled = false
+navigation_visibility_mode = 2

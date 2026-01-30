@@ -14,6 +14,8 @@ extends Node2D
 const _C = preload("res://Scripts/data/Constants.gd")
 const _MapUtils = preload("res://Scripts/data/MapUtils.gd")
 const _ChunkVisual = preload("res://Scripts/components/ChunkVisual.gd")
+## Chunk 场景模板
+const ChunkScene: PackedScene = preload("res://Scenes/Environment/Chunk.tscn")
 
 # =============================================================================
 # 属性
@@ -32,6 +34,10 @@ var _terrain_lookup: Dictionary = {}
 
 ## 线程池任务 ID 映射 (防止重复计算)
 var _calculating_tasks: Dictionary = {}
+
+
+## 区块对象池 (ChunkVisual)
+# var _chunk_pool: Array[ChunkVisual] = []
 
 ### 导航层引用 (仍然保留全局导航层，因为它通常是连续的)
 #@onready var _navigation_layer: TileMapLayer = $NavigationLayer
@@ -66,16 +72,16 @@ func _ready() -> void:
 	if _terrain_lookup.is_empty():
 		push_error("[GlobalMapController] Terrain lookup table is empty! Check TileSet configuration.")
 	else:
-		# 打印完整地形表供核对
-		print("========== TERRAIN LOOKUP TABLE DUMP ==========")
-		for t_set in _terrain_lookup:
-			for t_id in _terrain_lookup[t_set]:
-				print("TerrainSet: %s, TerrainID: %s" % [t_set, t_id])
-				for mask in _terrain_lookup[t_set][t_id]:
-					var info = _terrain_lookup[t_set][t_id][mask]
-					print("  Mask: %s -> Source: %s, Atlas: %s, Alt: %s" % [mask, info.source, info.atlas, info.alt])
-		print("===============================================")
-
+		## 打印完整地形表供核对
+		#print("========== TERRAIN LOOKUP TABLE DUMP ==========")
+		#for t_set in _terrain_lookup:
+			#for t_id in _terrain_lookup[t_set]:
+				#print("TerrainSet: %s, TerrainID: %s" % [t_set, t_id])
+				#for mask in _terrain_lookup[t_set][t_id]:
+					#var info = _terrain_lookup[t_set][t_id][mask]
+					#print("  Mask: %s -> Source: %s, Atlas: %s, Alt: %s" % [mask, info.source, info.atlas, info.alt])
+		#print("===============================================")
+		pass
 
 # =============================================================================
 # 公共接口
@@ -92,8 +98,7 @@ func render_chunk(coord: Vector2i, data) -> void:
 		return
 		
 	# 启动后台任务计算视觉数据
-	# 注意：传递 data.terrain_map (PackedInt32Array) 是值传递(COW)，但在线程中读取是安全的
-	# data 对象本身是 RefCounted，传递引用也是安全的，只要主线程不修改它
+	# 任务包括：计算数据 + 实例化场景 (但不 add_child)
 	var task_id = WorkerThreadPool.add_task(
 		_calculate_visuals_task.bind(coord, data),
 		true, # High priority
@@ -104,11 +109,13 @@ func render_chunk(coord: Vector2i, data) -> void:
 
 ## 清除区块
 func clear_chunk(coord: Vector2i) -> void:
+	# var st=Time.get_ticks_usec()
 	if active_chunks.has(coord):
 		var visual = active_chunks[coord]
 		active_chunks.erase(coord)
 		visual.queue_free()
-	
+	# var end=Time.get_ticks_usec()
+	# print(end-st)
 	# 如果有正在进行的计算任务，无法直接取消，但在回调中会检查 active_chunks
 
 
@@ -124,26 +131,26 @@ func set_cell_at(global_pos: Vector2, layer_enum: int, tile_id: int) -> void:
 		var source_id = -1
 		var atlas_coord = Vector2i(-1, -1)
 		
-		# 如果是添加物体/地形，需要查找资源
+		if layer_enum == _C.Layer.GROUND:
+			# 运行时修改地形比较复杂，需要重新计算连接
+			# 简单起见，这里只设置中心块，不更新连接 (或者请求重新完整渲染该 Chunk)
+			# 为了正确性，最好是重新渲染整个 Chunk (及其邻居)
+			# 暂时实现为：重新请求渲染该 Chunk
+			if world_manager:
+				var chunk_data = world_manager.get_chunk_data(chunk_coord)
+				if chunk_data:
+					clear_chunk(chunk_coord)
+					render_chunk(chunk_coord, chunk_data)
+					# TODO: 邻居也需要更新边缘
+			return
+		
+		# 如果是添加物体，需要查找资源
 		if tile_id != -1:
-			if layer_enum == _C.Layer.GROUND:
-				# 运行时修改地形比较复杂，需要重新计算连接
-				# 简单起见，这里只设置中心块，不更新连接 (或者请求重新完整渲染该 Chunk)
-				# 为了正确性，最好是重新渲染整个 Chunk (及其邻居)
-				# 暂时实现为：重新请求渲染该 Chunk
-				if world_manager:
-					var chunk_data = world_manager.get_chunk_data(chunk_coord)
-					if chunk_data:
-						clear_chunk(chunk_coord)
-						render_chunk(chunk_coord, chunk_data)
-						# TODO: 邻居也需要更新边缘
-				return
-			else:
-				# 物体直接查表
-				var res = _C.OBJECT_RESOURCE_TABLE.get(tile_id)
-				if res:
-					source_id = res.source_id
-					atlas_coord = res.atlas
+			# 物体直接查表
+			var res = _C.OBJECT_RESOURCE_TABLE.get(tile_id)
+			if res:
+				source_id = res.source_id
+				atlas_coord = res.atlas
 		
 		visual.set_block(local_coord, layer_enum, source_id, atlas_coord)
 
@@ -238,7 +245,21 @@ func _calculate_tile_bitmask(tile_data: TileData) -> int:
 # =============================================================================
 
 func _calculate_visuals_task(coord: Vector2i, data: ChunkData) -> void:
+	#OS.delay_msec(1000)
 	# print("[GlobalMapController] Starting visual calculation for chunk %s" % coord)
+	
+	if data == null:
+		_queue_visual_update(coord, {})
+		return
+		
+	# 检查数据完整性 (防止旧存档或损坏数据导致数组越界崩溃)
+	# 崩溃会导致任务标记泄露，从而永久阻塞该区块渲染
+	var expected_size = _C.CHUNK_DATA_SIZE * _C.CHUNK_DATA_SIZE
+	if data.terrain_map.size() != expected_size:
+		push_error("[GlobalMapController] Chunk data size mismatch for %s. Expected %d, got %d. Discarding." % [coord, expected_size, data.terrain_map.size()])
+		_queue_visual_update(coord, {})
+		return
+		
 	var result = {
 		"coord": coord,
 		"ground": {
@@ -262,9 +283,11 @@ func _calculate_visuals_task(coord: Vector2i, data: ChunkData) -> void:
 			# 查表
 			var tile_info = _lookup_terrain_tile(_C.TERRAIN_SET_GROUND, t_id, bitmask)
 			if tile_info:
-				# 检查坐标是否有效 (简单的范围检查，假设 atlas 不会超过 100x100)
-				if tile_info.atlas.x > 100 or tile_info.atlas.y > 100:
-					print("[GlobalMapController] Suspicious atlas coord found: %s for t_id=%s, mask=%s" % [tile_info.atlas, t_id, bitmask])
+				## 检查坐标是否有效 (简单的范围检查，假设 atlas 不会超过 100x100)
+				#if tile_info.atlas.x > 32 or tile_info.atlas.y > 32:
+					## print("[GlobalMapController] Suspicious atlas coord found: %s for t_id=%s, mask=%s" % [tile_info.atlas, t_id, bitmask])
+					## 忽略或使用默认值，避免报错
+					#continue
 				
 				result.ground.cells.append(Vector2i(x, y))
 				result.ground.sources.append(tile_info.source)
@@ -291,9 +314,57 @@ func _calculate_visuals_task(coord: Vector2i, data: ChunkData) -> void:
 				"coord": res.atlas
 			})
 	
-	# 回调主线程
-	# print("[GlobalMapController] Visuals calculated for %s. Ground cells: %s" % [coord, result.ground.cells.size()])
-	call_deferred("_on_visuals_calculated", result)
+	# 3. 计算导航层
+	result.navigation = {
+		"cells": [] as Array[Vector2i],
+		"source": _C.NAV_SOURCE_ID,
+		"coords": [] as Array[Vector2i]
+	}
+	
+	# 简单逻辑：有地面且无障碍物 -> 可通行；有障碍物 -> 不可通行
+	for y in range(_C.CHUNK_SIZE):
+		for x in range(_C.CHUNK_SIZE):
+			var t_id = data.get_terrain(x, y)
+			
+			# 如果没有地形（虚空），不设置导航点
+			if t_id == -1: continue
+			
+			# 检查是否有障碍物
+			var is_blocked = false
+			# 检查该位置是否有 OBSTACLE 层的物体
+			var packed_key = _MapUtils.pack_coord(x, y, _C.Layer.OBSTACLE)
+			if data.object_map.has(packed_key):
+				is_blocked = true
+				
+			# 检查高度层级 (高度0为水域，不可通行)
+			if t_id == 0: # 假设 ID 0 对应水域/高度0，最好用常量判断
+				is_blocked = true
+			
+			var nav_coord = _C.NAV_TILE_WALKABLE
+			if is_blocked:
+				nav_coord = _C.NAV_TILE_UNWALKABLE
+				
+			result.navigation.cells.append(Vector2i(x, y))
+			result.navigation.coords.append(nav_coord)
+	
+	# 4. 实例化 ChunkVisual (在后台线程进行)
+	# 注意：实例化节点通常是线程安全的，只要不将其添加到 SceneTree
+	var visual_node = ChunkScene.instantiate()
+	if not visual_node is ChunkVisual:
+		push_error("GlobalMapController: Instantiated scene is not a ChunkVisual!")
+		visual_node.queue_free()
+		# 即使失败也要发送空结果，以清除 _calculating_tasks 标记
+		_queue_visual_update(coord, {})
+		return
+		
+	var visual: ChunkVisual = visual_node as ChunkVisual
+	visual.position = Vector2(coord.x * _C.CHUNK_SIZE_PIXELS, coord.y * _C.CHUNK_SIZE_PIXELS)
+	
+	# 将实例化好的节点传递给主线程
+	result.visual_node = visual
+	
+	# 直接推入渲染队列 (线程安全)
+	_queue_visual_update(coord, result)
 
 
 func _get_terrain_bitmask_at(data: ChunkData, x: int, y: int, center_id: int) -> int:
@@ -339,28 +410,91 @@ func _lookup_terrain_tile(t_set: int, t_id: int, bitmask: int):
 
 
 # =============================================================================
-# 回调
+# 分帧渲染队列 (Frame-Budgeted Rendering Queue)
 # =============================================================================
 
-func _on_visuals_calculated(result: Dictionary) -> void:
-	var coord = result.coord
-	_calculating_tasks.erase(coord)
+## 待处理的视觉更新队列
+## 元素: { "coord": Vector2i, "data": Dictionary }
+var _render_queue: Array[Dictionary] = []
+var _queue_mutex := Mutex.new()
+
+func _queue_visual_update(coord: Vector2i, data: Dictionary) -> void:
+	_queue_mutex.lock()
+	_render_queue.append({ "coord": coord, "data": data })
+	_queue_mutex.unlock()
+	# 确保每帧处理开启
+	call_deferred("set_process", true)
+
+func _process(_delta: float) -> void:
+	var start_time = Time.get_ticks_usec()
 	
-	# 如果在计算期间区块被清除了（例如玩家快速移动），则丢弃结果
-	# 但这里我们没有 active_chunks 标记"pending"，所以主要检查是否需要
-	# 简单的策略：直接创建。WorldManager 会负责管理它的生命周期（如果不需要了会调 clear_chunk）
-	# 不过如果 active_chunks 已经有了（理论上不应该），则覆盖
-	
-	if active_chunks.has(coord):
-		active_chunks[coord].queue_free()
-	
-	# 实例化 ChunkVisual
-	var visual = _ChunkVisual.new(_tile_set)
-	visual.position = Vector2(coord.x * _C.CHUNK_SIZE_PIXELS, coord.y * _C.CHUNK_SIZE_PIXELS)
-	add_child(visual)
-	
-	# 应用数据
-	visual.apply_visual_data(result)
-	
-	active_chunks[coord] = visual
-	print("[GlobalMapController] Chunk %s rendered. Visual node: %s" % [coord, visual])
+	while true:
+		# 1. 安全获取任务
+		_queue_mutex.lock()
+		if _render_queue.is_empty():
+			_queue_mutex.unlock()
+			set_process(false)
+			break
+			
+		var task = _render_queue.pop_front()
+		_queue_mutex.unlock()
+		
+		var coord: Vector2i = task["coord"]
+		var data: Dictionary = task["data"]
+		
+		# 清除计算任务标记 (原 _on_visuals_calculated 逻辑)
+		_calculating_tasks.erase(coord)
+		
+		# 2. 检查是否还需要渲染
+		# 如果在排队期间区块已经通过 clear_chunk 移除了 active_chunks，理论上应该跳过？
+		# 但 clear_chunk 逻辑是：如果 active_chunks 有，就删除。
+		# 这里的场景是：后台任务完成了，准备创建。
+		# 我们需要再次检查这个区块是否仍然应该被渲染（例如是否还在 active 半径内）
+		# 不过简单起见，且遵循 WorldManager 的指令，只要任务完成了就尝试渲染。
+		# WorldManager 稍后如果判定不需要，会调用 clear_chunk。
+		
+		# 检查数据有效性（防止任务失败导致的问题）
+		if not data.has("ground"):
+			# print("[GlobalMapController] Task failed or returned invalid data for chunk %s" % coord)
+			continue
+		
+		if not world_manager:
+			print("[GlobalMapController] ERROR: world_manager is null! Discarding chunk %s" % coord)
+			if data.has("visual_node") and is_instance_valid(data.visual_node):
+				data.visual_node.queue_free()
+			continue
+		
+		#print("[GlobalMapController] Processing chunk %s from queue." % coord)
+		
+		# 3. 如果 active_chunks 里已经有了（极罕见情况），先清理旧的
+		if active_chunks.has(coord):
+			var old_visual = active_chunks[coord]
+			active_chunks.erase(coord)
+			old_visual.queue_free()
+		
+		# 4. 获取预实例化的节点 (耗时操作1 已转移至线程)
+		var visual: ChunkVisual
+		if data.has("visual_node") and is_instance_valid(data.visual_node):
+			visual = data.visual_node
+		else:
+			# 后备方案：如果数据里没有，或者失效了
+			var visual_node = ChunkScene.instantiate()
+			if not visual_node is ChunkVisual:
+				visual_node.queue_free()
+				continue
+			visual = visual_node as ChunkVisual
+			visual.position = Vector2(coord.x * _C.CHUNK_SIZE_PIXELS, coord.y * _C.CHUNK_SIZE_PIXELS)
+		
+		# 5. 挂载 (耗时操作2)
+		add_child(visual)
+		active_chunks[coord] = visual
+		
+		# 6. 应用数据 (耗时操作3)
+		visual.apply_visual_data(data)
+		
+		# 检查时间预算
+		var current_time = Time.get_ticks_usec()
+		#print("frame_time",current_time - start_time)
+		if (current_time - start_time) > _C.MAX_RENDER_TIME_PER_FRAME_US:
+			# print("[GlobalMapController] Render budget exceeded (%sus). Yielding..." % (current_time - start_time))
+			break

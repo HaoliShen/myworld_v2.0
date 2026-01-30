@@ -102,12 +102,20 @@ func initialize_world(seed: int) -> void:
 	# 获取 GlobalMapController 引用
 	_map_controller = get_node_or_null("/root/World/Environment")
 	if _map_controller == null:
-		push_error("WorldManager: Failed to get GlobalMapController reference")
-		return
+		push_error("WorldManager: Failed to get GlobalMapController reference at /root/World/Environment")
+		# 尝试搜索
+		_map_controller = get_tree().root.find_child("Environment", true, false)
+		if _map_controller:
+			print("WorldManager: Found Environment at %s" % _map_controller.get_path())
+		else:
+			return
 	
 	# 注入自身引用
 	if "world_manager" in _map_controller:
 		_map_controller.world_manager = self
+		print("WorldManager: Successfully injected self into GlobalMapController")
+	else:
+		push_error("WorldManager: _map_controller does not have 'world_manager' property")
 
 	_is_initialized = true
 	world_initialized.emit(seed)

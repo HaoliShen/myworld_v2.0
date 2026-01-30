@@ -79,6 +79,19 @@ const HEIGHT_TO_TERRAIN: Dictionary = {
 }
 
 # =============================================================================
+# 导航配置 (Navigation Configuration)
+# =============================================================================
+
+## 导航 TileSource ID
+const NAV_SOURCE_ID: int = 3
+
+## 可通行地块 Atlas 坐标
+const NAV_TILE_WALKABLE: Vector2i = Vector2i(56, 25)
+
+## 不可通行地块 Atlas 坐标
+const NAV_TILE_UNWALKABLE: Vector2i = Vector2i(56, 26)
+
+# =============================================================================
 # 物体配置 (Object Configuration)
 # =============================================================================
 
@@ -122,17 +135,19 @@ const DRAG_THRESHOLD: float = 10.0
 # 用于: WorldManager 区块加载/卸载判定
 # =============================================================================
 
-## Level 1: 活跃层 - 加载/卸载半径 (区块)
+## Level 1: 活跃层 - 加载半径 (区块)
 const ACTIVE_LOAD_RADIUS: int = 1
-const ACTIVE_UNLOAD_RADIUS: int = 1
 
-## Level 2: 就绪层 - 加载/卸载半径 (区块)
+## Level 2: 就绪层 - 加载半径 (区块)
 const READY_LOAD_RADIUS: int = 2
-const READY_UNLOAD_RADIUS: int = 2
 
-## Level 3: 数据层 - 加载/卸载半径 (区块)
+## Level 3: 数据层 - 加载半径 (区块)
 const DATA_LOAD_RADIUS: int = 8
-const DATA_UNLOAD_RADIUS: int = 8
+
+## 数据层更新阈值
+## 当玩家距离当前数据中心超过 (DATA_LOAD_RADIUS - DATA_UPDATE_THRESHOLD_OFFSET) 时触发数据层更新
+## 也就是离load区域边界切比雪夫距离为ready距离的时候进行一次load区域更新
+const DATA_UPDATE_THRESHOLD_OFFSET: int = READY_LOAD_RADIUS
 
 # =============================================================================
 # 高度系统 (Elevation System)
@@ -159,6 +174,13 @@ enum ChunkState {
 	READY = 2,     ## 就绪层 (隐藏节点)
 	ACTIVE = 3,    ## 活跃层 (可见节点)
 }
+
+## 渲染配置 (Rendering Configuration)
+# =============================================================================
+
+## 每帧允许用于区块渲染的最大时间 (微秒)
+## 8ms = 8000us (目标 60FPS 约 16ms/帧，留一半时间给逻辑和其他渲染)
+const MAX_RENDER_TIME_PER_FRAME_US: int = 2000
 
 # =============================================================================
 # 物理层级 (Physics Layers)
