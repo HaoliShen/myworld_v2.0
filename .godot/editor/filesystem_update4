@@ -2,5 +2,4 @@ res://Scenes/Environment/Chunk.tscn
 res://addons/phantom_camera/themes/theme.tres
 res://Assets/Tilesets/test_tileset.tres
 res://Assets/Tilesets/main_tileset.tres
-res://Scripts/core/GlobalMapController.gd
-res://Scripts/data/Constants.gd
+res://Scripts/components/MapGenerator.gd

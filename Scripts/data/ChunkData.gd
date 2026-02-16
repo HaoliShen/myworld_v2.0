@@ -23,18 +23,20 @@ var coord: Vector2i = Vector2i.ZERO
 ## 脏标记。当数据发生修改时置为 true，用于决定卸载时是否需要回写磁盘。
 var is_dirty: bool = false
 
-## [Layer 0 - Data A] 地形类型数据 (Terrain Type ID)
+## [Layer 0] 基础地形层 (Terrain Type ID)
+## 存储: BASE_TERRAINS 的 ID (0, 1, 2...)
 ## 大小: 34x34 (包含周围 1 格 padding)
 ## 索引: (y + 1) * 34 + (x + 1)
-var terrain_map: PackedInt32Array
+var base_layer: PackedByteArray
 
-## [Layer 0 - Data B] 地形高度数据 (Elevation Level)
-## 大小: 34x34
-var elevation_map: PackedByteArray
+## [Layer 1-4] 扩展高度层 (稀疏，可能为空)
+## 存储: CLIFF_TERRAIN_ID 或 255 (代表 TERRAIN_EMPTY)
+## 这是一个数组，包含 4 个 PackedByteArray，分别对应 ExH1, ExH2, ExH3, ExH4
+var height_layers: Array[PackedByteArray] = []
 
-## [Layer 1 & 2] 物体层数据 (稀疏存储)
+## [Object Layer] 物体层数据 (稀疏存储)
 ## Key: int (Packed Local Coord) -> Value: int (Tile ID)
-## 注意: Object 不需要 Padding，因为通常不需要连接计算。如果需要，也可以扩展。
+## 注意: Object 不需要 Padding，因为通常不需要连接计算。
 ## 目前保持仅存储 0..31 范围内的物体。
 var object_map: Dictionary = {}
 
@@ -46,61 +48,49 @@ var object_map: Dictionary = {}
 func _init(target_coord: Vector2i = Vector2i.ZERO) -> void:
 	coord = target_coord
 
-	# 1. 初始化地形 ID 数组 (34x34)
-	terrain_map = PackedInt32Array()
-	terrain_map.resize(_C.CHUNK_DATA_SIZE * _C.CHUNK_DATA_SIZE)
-	terrain_map.fill(-1)  # 默认空
+	# 1. 初始化基础地形层 (34x34)
+	base_layer = PackedByteArray()
+	base_layer.resize(_C.CHUNK_DATA_SIZE * _C.CHUNK_DATA_SIZE)
+	# 默认填充泥土
+	base_layer.fill(_C.BASE_TERRAINS.DIRT) 
 
-	# 2. 初始化高度数组 (34x34)
-	elevation_map = PackedByteArray()
-	elevation_map.resize(_C.CHUNK_DATA_SIZE * _C.CHUNK_DATA_SIZE)
-	elevation_map.fill(0)  # 默认高度 0
-
-# =============================================================================
-# 高度操作 (Elevation Operations)
-# =============================================================================
-
-## 获取高度 (支持 -1 到 32)
-func get_elevation(x: int, y: int) -> int:
-	# 边界检查放宽到 -1 ~ 32
-	if x < -1 or x >= _C.CHUNK_SIZE + 1 or y < -1 or y >= _C.CHUNK_SIZE + 1:
-		return 0
-	
-	# 映射到内部索引 (0~33)
-	var internal_x := x + 1
-	var internal_y := y + 1
-	return elevation_map[internal_y * _C.CHUNK_DATA_SIZE + internal_x]
-
-
-## 设置高度 (支持 -1 到 32)
-func set_elevation(x: int, y: int, h: int) -> void:
-	if x < -1 or x >= _C.CHUNK_SIZE + 1 or y < -1 or y >= _C.CHUNK_SIZE + 1:
-		return
-		
-	var internal_x := x + 1
-	var internal_y := y + 1
-	var idx := internal_y * _C.CHUNK_DATA_SIZE + internal_x
-	
-	if elevation_map[idx] != h:
-		elevation_map[idx] = h
-		is_dirty = true
+	# 2. 初始化高度层 (34x34 * 4)
+	height_layers.resize(4)
+	for i in range(4):
+		var layer = PackedByteArray()
+		layer.resize(_C.CHUNK_DATA_SIZE * _C.CHUNK_DATA_SIZE)
+		layer.fill(255) # 255 代表 -1 (Empty)
+		height_layers[i] = layer
 
 # =============================================================================
 # 地形操作 (Terrain Operations)
 # =============================================================================
 
-## 获取地形 ID (支持 -1 到 32)
-func get_terrain(x: int, y: int) -> int:
+## 获取指定层的地形 ID
+## @param layer_index: 0=Base, 1=ExH1, 2=ExH2, 3=ExH3, 4=ExH4
+## @return: Terrain ID (0-254) 或 -1 (Empty)
+func get_terrain(x: int, y: int, layer_index: int = 0) -> int:
 	if x < -1 or x >= _C.CHUNK_SIZE + 1 or y < -1 or y >= _C.CHUNK_SIZE + 1:
 		return -1
 		
 	var internal_x := x + 1
 	var internal_y := y + 1
-	return terrain_map[internal_y * _C.CHUNK_DATA_SIZE + internal_x]
+	var idx := internal_y * _C.CHUNK_DATA_SIZE + internal_x
+	
+	if layer_index == 0:
+		return base_layer[idx]
+	elif layer_index >= 1 and layer_index <= 4:
+		var val = height_layers[layer_index - 1][idx]
+		if val == 255:
+			return -1
+		return val
+	
+	return -1
 
 
-## 设置地形 ID (支持 -1 到 32)
-func set_terrain(x: int, y: int, id: int) -> void:
+## 设置指定层的地形 ID
+## @param layer_index: 0=Base, 1=ExH1, 2=ExH2, 3=ExH3, 4=ExH4
+func set_terrain(x: int, y: int, id: int, layer_index: int = 0) -> void:
 	if x < -1 or x >= _C.CHUNK_SIZE + 1 or y < -1 or y >= _C.CHUNK_SIZE + 1:
 		return
 		
@@ -108,9 +98,17 @@ func set_terrain(x: int, y: int, id: int) -> void:
 	var internal_y := y + 1
 	var idx := internal_y * _C.CHUNK_DATA_SIZE + internal_x
 	
-	if terrain_map[idx] != id:
-		terrain_map[idx] = id
-		is_dirty = true
+	if layer_index == 0:
+		if base_layer[idx] != id:
+			base_layer[idx] = id
+			is_dirty = true
+	elif layer_index >= 1 and layer_index <= 4:
+		var stored_val = id
+		if id == -1: stored_val = 255
+		
+		if height_layers[layer_index - 1][idx] != stored_val:
+			height_layers[layer_index - 1][idx] = stored_val
+			is_dirty = true
 
 # =============================================================================
 # 物体操作 (Object Operations)
@@ -153,14 +151,16 @@ func has_object_at(x: int, y: int, layer: int) -> bool:
 func to_bytes() -> PackedByteArray:
 	var buffer := StreamPeerBuffer.new()
 
-	# 1. 地形 (34x34)
-	var t_bytes := terrain_map.to_byte_array()
-	buffer.put_32(t_bytes.size())
-	buffer.put_data(t_bytes)
+	# 1. 基础地形层 (34x34)
+	var b_bytes := base_layer
+	buffer.put_32(b_bytes.size())
+	buffer.put_data(b_bytes)
 
-	# 2. 高度 (34x34)
-	buffer.put_32(elevation_map.size())
-	buffer.put_data(elevation_map)
+	# 2. 高度层 (4 x 34x34)
+	for i in range(4):
+		var h_bytes = height_layers[i]
+		buffer.put_32(h_bytes.size())
+		buffer.put_data(h_bytes)
 
 	# 3. 物体
 	var o_bytes := var_to_bytes(object_map)
@@ -175,24 +175,26 @@ static func from_bytes(target_coord: Vector2i, data: PackedByteArray):
 	var buffer := StreamPeerBuffer.new()
 	buffer.data_array = data
 
-	# 1. 地形
-	var t_size := buffer.get_32()
-	var t_result := buffer.get_data(t_size)
-	if t_result[0] == OK:
-		instance.terrain_map = t_result[1].to_int32_array()
-		# 校验尺寸，如果旧存档是 32x32，需要迁移 (这里暂且假设都是新档)
-		if instance.terrain_map.size() != _C.CHUNK_DATA_SIZE * _C.CHUNK_DATA_SIZE:
-			# 简单的迁移逻辑：重新 resize 并填充默认值
-			instance.terrain_map = PackedInt32Array()
-			instance.terrain_map.resize(_C.CHUNK_DATA_SIZE * _C.CHUNK_DATA_SIZE)
-			instance.terrain_map.fill(-1)
-			# 这里如果需要迁移旧数据，逻辑会比较复杂，暂时忽略，假设重开档
+	# 1. 基础地形层
+	var b_size := buffer.get_32()
+	var b_result := buffer.get_data(b_size)
+	if b_result[0] == OK:
+		instance.base_layer = b_result[1]
+		# 校验尺寸 (兼容性处理)
+		if instance.base_layer.size() != _C.CHUNK_DATA_SIZE * _C.CHUNK_DATA_SIZE:
+			instance.base_layer.resize(_C.CHUNK_DATA_SIZE * _C.CHUNK_DATA_SIZE)
+			instance.base_layer.fill(_C.BASE_TERRAINS.DIRT)
 
-	# 2. 高度
-	var e_size := buffer.get_32()
-	var e_result := buffer.get_data(e_size)
-	if e_result[0] == OK:
-		instance.elevation_map = e_result[1]
+	# 2. 高度层
+	for i in range(4):
+		if buffer.get_available_bytes() > 0:
+			var h_size := buffer.get_32()
+			var h_result := buffer.get_data(h_size)
+			if h_result[0] == OK:
+				instance.height_layers[i] = h_result[1]
+				if instance.height_layers[i].size() != _C.CHUNK_DATA_SIZE * _C.CHUNK_DATA_SIZE:
+					instance.height_layers[i].resize(_C.CHUNK_DATA_SIZE * _C.CHUNK_DATA_SIZE)
+					instance.height_layers[i].fill(255)
 
 	# 3. 物体
 	var o_bytes_size := buffer.get_available_bytes()
@@ -220,6 +222,8 @@ func is_empty() -> bool:
 	# 检查中心区域
 	for y in range(_C.CHUNK_SIZE):
 		for x in range(_C.CHUNK_SIZE):
-			if get_terrain(x, y) != -1:
-				return false
+			# 如果基础层不是空的(比如不是 -1, 但基础层默认是 dirt, 所以这里可能需要改逻辑)
+			# 这里假设只要有数据就算非空。
+			# 实际上，只要生成过，肯定非空。
+			pass
 	return object_map.is_empty()

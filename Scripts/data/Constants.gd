@@ -69,21 +69,46 @@ const BIT_TOP_RIGHT: int = 32
 const BIT_TOP: int = 64
 const BIT_TOP_LEFT: int = 128
 
-## 地形高度对应的配置(terrainset中的terrain配置)
-## Key: Elevation (int) -> Value: Dictionary { "terrain_id": int }
-## 用于: MapGenerator 生成地形, GlobalMapController 渲染
-const HEIGHT_TO_TERRAIN: Dictionary = {
-	0: { "terrain_id": 0 }, # Watertile
-	1: { "terrain_id": 1 }, # Height1
-	2: { "terrain_id": 2 }, # Height2 (and above)
+## 地形层级定义 (用于渲染顺序和逻辑分层)
+enum TerrainLayer {
+	BASE = 0, # 基础层 (泥土、草地、沙地)
+	EXH_1 = 1, # 高度层 1
+	EXH_2 = 2, # 高度层 2
+	EXH_3 = 3, # 高度层 3
+	EXH_4 = 4  # 高度层 4
 }
+
+## 地形层级配置
+## Key: Layer Index (int) -> Value: { "terrain_set": int, "terrain_id": int }
+## 注意：Base Layer 的 terrain_id 可能根据生物群落变化，这里只配置 set
+##      ExH 层目前使用固定的 default_terrain，未来也可扩展
+const TERRAIN_LAYER_CONFIG: Dictionary = {
+	TerrainLayer.BASE:  { "terrain_set": 0 }, # Base Layer 使用 set 0
+	TerrainLayer.EXH_1: { "terrain_set": 0, "default_terrain": 4 }, # ExH1 使用 set 0, terrain 3
+	TerrainLayer.EXH_2: { "terrain_set": 0, "default_terrain": 5 }, # ExH2 使用 set 0, terrain 3
+	TerrainLayer.EXH_3: { "terrain_set": 0, "default_terrain": 6 }, # ExH3 使用 set 0, terrain 3
+	TerrainLayer.EXH_4: { "terrain_set": 0, "default_terrain": 7 }, # ExH4 使用 set 0, terrain 3
+}
+
+## 基础地形类型定义 (仅用于 Base Layer)
+## Key: 类型枚举或字符串 -> Value: 地形 ID (在 TileSet 编辑器中设定的 ID)
+## 注意：这些 ID 必须属于 TERRAIN_LAYER_CONFIG[TerrainLayer.BASE].terrain_set
+const BASE_TERRAINS: Dictionary = {
+	"DIRT":  1, # 对应 TileSet Set 0 中的 Dirt 地形
+	"GRASS": 2, # 对应 TileSet Set 0 中的 Grass 地形
+	"SAND":  3, # 对应 TileSet Set 0 中的 Sand 地形
+	"WATER": 0  # 对应 TileSet Set 0 中的 Water 地形 (假设 ID 为 4)
+}
+
+## 空地形标记 (用于表示该层该位置无数据)
+const TERRAIN_EMPTY: int = -1
 
 # =============================================================================
 # 导航配置 (Navigation Configuration)
 # =============================================================================
 
 ## 导航 TileSource ID
-const NAV_SOURCE_ID: int = 3
+const NAV_SOURCE_ID: int = 2
 
 ## 可通行地块 Atlas 坐标
 const NAV_TILE_WALKABLE: Vector2i = Vector2i(56, 25)
@@ -110,9 +135,12 @@ const OBJECT_ID_TABLE: Dictionary = {
 ## 物体资源配置表 (ID -> Resource Config)
 ## source_id: -1 表示暂时不渲染 (用于开发阶段或无资源物体)
 const OBJECT_RESOURCE_TABLE: Dictionary = {
-	ID_GRASS: { "source_id": 2, "atlas": Vector2i(0, 0) },
-	ID_TREE:  { "source_id": 2, "atlas": Vector2i(1, 0) },
-	ID_STONE: { "source_id": 2, "atlas": Vector2i(2, 0) },
+	ID_GRASS: { "source_id": 1, "atlas": [Vector2i(6, 19),Vector2i(7,19),Vector2i(8,19),Vector2i(9,19),Vector2i(10,19),Vector2i(11,19)] },
+	ID_STONE:  { "source_id": 1, "atlas": [Vector2i(12, 18),Vector2i(12,19),Vector2i(12,20)] },
+	ID_TREE: { "source_id": 1, "atlas": [
+	Vector2i(14, 0),Vector2i(20,0),Vector2i(26,0),
+	Vector2i(14,6),Vector2i(20,6),Vector2i(26,6),
+	Vector2i(14,12),Vector2i(20,12),Vector2i(26,12)] },
 }
 
 ## 物体渲染层级表 (ID -> Layer Enum)

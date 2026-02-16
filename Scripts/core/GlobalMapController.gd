@@ -1,13 +1,3 @@
-## GlobalMapController.gd
-## 全局地图控制器 - 负责管理和渲染所有区块节点
-## 路径: res://Scripts/Core/GlobalMapController.gd
-## 挂载节点: World/Environment
-##
-## 职责:
-## 1. 维护活跃的 ChunkVisual 节点集合
-## 2. 负责 TileSet 的地形连接查找表构建
-## 3. 在后台线程计算区块的瓦片数据 (地形连接 + 物体)
-## 4. 实例化和更新 ChunkVisual
 class_name GlobalMapController
 extends Node2D
 
@@ -75,11 +65,11 @@ func _ready() -> void:
 		## 打印完整地形表供核对
 		#print("========== TERRAIN LOOKUP TABLE DUMP ==========")
 		#for t_set in _terrain_lookup:
-			#for t_id in _terrain_lookup[t_set]:
-				#print("TerrainSet: %s, TerrainID: %s" % [t_set, t_id])
-				#for mask in _terrain_lookup[t_set][t_id]:
-					#var info = _terrain_lookup[t_set][t_id][mask]
-					#print("  Mask: %s -> Source: %s, Atlas: %s, Alt: %s" % [mask, info.source, info.atlas, info.alt])
+		#	for t_id in _terrain_lookup[t_set]:
+		#		print("TerrainSet: %s, TerrainID: %s" % [t_set, t_id])
+		#		for mask in _terrain_lookup[t_set][t_id]:
+		#			var info = _terrain_lookup[t_set][t_id][mask]
+		#			print("  Mask: %s -> Source: %s, Atlas: %s, Alt: %s" % [mask, info.source, info.atlas, info.alt])
 		#print("===============================================")
 		pass
 
@@ -132,16 +122,9 @@ func set_cell_at(global_pos: Vector2, layer_enum: int, tile_id: int) -> void:
 		var atlas_coord = Vector2i(-1, -1)
 		
 		if layer_enum == _C.Layer.GROUND:
-			# 运行时修改地形比较复杂，需要重新计算连接
-			# 简单起见，这里只设置中心块，不更新连接 (或者请求重新完整渲染该 Chunk)
-			# 为了正确性，最好是重新渲染整个 Chunk (及其邻居)
-			# 暂时实现为：重新请求渲染该 Chunk
+			# 优化：仅更新局部区域 (3x3)，而不是重绘整个 Chunk
 			if world_manager:
-				var chunk_data = world_manager.get_chunk_data(chunk_coord)
-				if chunk_data:
-					clear_chunk(chunk_coord)
-					render_chunk(chunk_coord, chunk_data)
-					# TODO: 邻居也需要更新边缘
+				_update_local_terrain_visuals(tile_coord)
 			return
 		
 		# 如果是添加物体，需要查找资源
@@ -150,10 +133,66 @@ func set_cell_at(global_pos: Vector2, layer_enum: int, tile_id: int) -> void:
 			var res = _C.OBJECT_RESOURCE_TABLE.get(tile_id)
 			if res:
 				source_id = res.source_id
-				atlas_coord = res.atlas
+				var atlas_list = res.atlas
+				if atlas_list is Array and atlas_list.size() > 0:
+					var idx = _deterministic_index(atlas_list.size(), tile_coord.x, tile_coord.y, tile_id)
+					atlas_coord = atlas_list[idx]
+				elif atlas_list is Vector2i:
+					atlas_coord = atlas_list
 		
 		visual.set_block(local_coord, layer_enum, source_id, atlas_coord)
 
+## 局部更新地形视觉 (3x3 区域)
+## @param center_tile: 修改的中心世界瓦片坐标
+func _update_local_terrain_visuals(center_tile: Vector2i) -> void:
+	if not world_manager: return
+	
+	# 遍历 3x3 区域 (包含中心点和8邻居)
+	for dy in range(-1, 2):
+		for dx in range(-1, 2):
+			var target_tile = center_tile + Vector2i(dx, dy)
+			
+			# 获取目标点的区块和局部坐标
+			var target_chunk = _MapUtils.tile_to_chunk(target_tile)
+			var target_local = _MapUtils.tile_to_local(target_tile)
+			
+			# 如果该区块未渲染，跳过
+			if not active_chunks.has(target_chunk):
+				continue
+				
+			var visual = active_chunks[target_chunk]
+			
+			# 1. 获取目标点的地形 ID
+			var chunk_data = world_manager.get_chunk_data(target_chunk)
+			if not chunk_data: continue
+			
+			var t_id = chunk_data.get_terrain(target_local.x, target_local.y)
+			if t_id == -1:
+				# 如果是空地形，清除
+				visual.set_block(target_local, _C.Layer.GROUND, -1, Vector2i(-1, -1))
+				continue
+				
+			# 2. 重新计算 Bitmask
+			# 注意：_get_terrain_bitmask_at 需要访问 chunk_data
+			# 但因为 WorldManager 已经处理了 Padding 同步，所以可以直接从当前 ChunkData 读取邻居
+			# 除非目标点在 Chunk 边缘，此时需要访问跨 Chunk 的数据。
+			# 现在的 _get_terrain_bitmask_at 是基于单个 ChunkData 的，且假设 Padding 已同步。
+			var bitmask = _get_terrain_bitmask_at(chunk_data, target_local.x, target_local.y, t_id)
+			
+			# 3. 查表获取图块信息
+			var tile_info = _lookup_terrain_tile(_C.TERRAIN_SET_GROUND, t_id, bitmask)
+			
+			if tile_info:
+				visual.set_block(
+					target_local, 
+					_C.Layer.GROUND, 
+					tile_info.source, 
+					tile_info.atlas, 
+					tile_info.alt
+				)
+			else:
+				# 找不到匹配图块，可能回退到默认
+				pass
 
 # =============================================================================
 # 查找表构建 (Initialization)
@@ -255,47 +294,54 @@ func _calculate_visuals_task(coord: Vector2i, data: ChunkData) -> void:
 	# 检查数据完整性 (防止旧存档或损坏数据导致数组越界崩溃)
 	# 崩溃会导致任务标记泄露，从而永久阻塞该区块渲染
 	var expected_size = _C.CHUNK_DATA_SIZE * _C.CHUNK_DATA_SIZE
-	if data.terrain_map.size() != expected_size:
-		push_error("[GlobalMapController] Chunk data size mismatch for %s. Expected %d, got %d. Discarding." % [coord, expected_size, data.terrain_map.size()])
+	if data.base_layer.size() != expected_size:
+		push_error("[GlobalMapController] Chunk data size mismatch for %s. Expected %d, got %d. Discarding." % [coord, expected_size, data.base_layer.size()])
 		_queue_visual_update(coord, {})
 		return
 		
 	var result = {
 		"coord": coord,
-		"ground": {
-			"cells": [] as Array[Vector2i],
-			"sources": [] as Array[int],
-			"coords": [] as Array[Vector2i],
-			"alts": [] as Array[int]
+		"terrain": {
+			# Key: layer_index (0=Base, 1-4=ExH) -> Value: {cells, sources, coords, alts}
 		},
 		"objects": {}
 	}
 	
-	# 1. 计算地形 (0..31)
-	for y in range(_C.CHUNK_SIZE):
-		for x in range(_C.CHUNK_SIZE):
-			var t_id = data.get_terrain(x, y)
-			if t_id == -1: continue
+	# 1. 计算地形 (遍历 5 层)
+	for layer_idx in range(5):
+		# 获取该层的地形配置 (TerrainSet)
+		var layer_config = _C.TERRAIN_LAYER_CONFIG.get(layer_idx)
+		if not layer_config:
+			continue
 			
-			# 获取周围信息 (从 padding 读取)
-			var bitmask = _get_terrain_bitmask_at(data, x, y, t_id)
-			
-			# 查表
-			var tile_info = _lookup_terrain_tile(_C.TERRAIN_SET_GROUND, t_id, bitmask)
-			if tile_info:
-				## 检查坐标是否有效 (简单的范围检查，假设 atlas 不会超过 100x100)
-				#if tile_info.atlas.x > 32 or tile_info.atlas.y > 32:
-					## print("[GlobalMapController] Suspicious atlas coord found: %s for t_id=%s, mask=%s" % [tile_info.atlas, t_id, bitmask])
-					## 忽略或使用默认值，避免报错
-					#continue
+		var terrain_set_id = layer_config.get("terrain_set", 0)
+		
+		var layer_data = {
+			"cells": [] as Array[Vector2i],
+			"sources": [] as Array[int],
+			"coords": [] as Array[Vector2i],
+			"alts": [] as Array[int]
+		}
+		
+		for y in range(_C.CHUNK_SIZE):
+			for x in range(_C.CHUNK_SIZE):
+				var t_id = data.get_terrain(x, y, layer_idx)
+				if t_id == -1: continue
 				
-				result.ground.cells.append(Vector2i(x, y))
-				result.ground.sources.append(tile_info.source)
-				result.ground.coords.append(tile_info.atlas)
-				result.ground.alts.append(tile_info.alt)
-			else:
-				# print("[GlobalMapController] No tile found for t_set=%s, t_id=%s, bitmask=%s at %s" % [_C.TERRAIN_SET_GROUND, t_id, bitmask, Vector2i(x, y)])
-				pass
+				# 获取周围信息 (从 padding 读取)
+				# 传入 layer_idx 以获取正确层级的邻居
+				var bitmask = _get_terrain_bitmask_at(data, x, y, t_id, layer_idx)
+				
+				# 查表 (使用配置的 TerrainSet ID)
+				var tile_info = _lookup_terrain_tile(terrain_set_id, t_id, bitmask)
+				if tile_info:
+					layer_data.cells.append(Vector2i(x, y))
+					layer_data.sources.append(tile_info.source)
+					layer_data.coords.append(tile_info.atlas)
+					layer_data.alts.append(tile_info.alt)
+		
+		if layer_data.cells.size() > 0:
+			result.terrain[layer_idx] = layer_data
 	
 	# 2. 计算物体
 	for packed_key in data.object_map:
@@ -308,10 +354,18 @@ func _calculate_visuals_task(coord: Vector2i, data: ChunkData) -> void:
 			if not result.objects.has(layer_id):
 				result.objects[layer_id] = []
 			
+			var atlas_list = res.atlas
+			var chosen_coord: Vector2i = Vector2i(-1, -1)
+			if atlas_list is Array and atlas_list.size() > 0:
+				var idx = _deterministic_index(atlas_list.size(), unpacked.x, unpacked.y, obj_id)
+				chosen_coord = atlas_list[idx]
+			elif atlas_list is Vector2i:
+				chosen_coord = atlas_list
+			
 			result.objects[layer_id].append({
 				"cell": Vector2i(unpacked.x, unpacked.y),
 				"source": res.source_id,
-				"coord": res.atlas
+				"coord": chosen_coord
 			})
 	
 	# 3. 计算导航层
@@ -324,7 +378,8 @@ func _calculate_visuals_task(coord: Vector2i, data: ChunkData) -> void:
 	# 简单逻辑：有地面且无障碍物 -> 可通行；有障碍物 -> 不可通行
 	for y in range(_C.CHUNK_SIZE):
 		for x in range(_C.CHUNK_SIZE):
-			var t_id = data.get_terrain(x, y)
+			# 只要基础层有地形，就可能有导航点
+			var t_id = data.get_terrain(x, y, 0)
 			
 			# 如果没有地形（虚空），不设置导航点
 			if t_id == -1: continue
@@ -337,7 +392,12 @@ func _calculate_visuals_task(coord: Vector2i, data: ChunkData) -> void:
 				is_blocked = true
 				
 			# 检查高度层级 (高度0为水域，不可通行)
-			if t_id == 0: # 假设 ID 0 对应水域/高度0，最好用常量判断
+			# 如果是 BaseLayer 的 Sand/Dirt/Grass，通常可通行
+			# 如果是 ExH 层级作为山脉，可能不可通行? 暂时保留原有逻辑，即 ID 0 (水) 不可通行
+			# 这里的 t_id 是 BaseLayer 的 ID。
+			# 假设所有 Base Terrain 都可通行，除非被物体阻挡或类型为 Water。
+			
+			if t_id == _C.BASE_TERRAINS.WATER:
 				is_blocked = true
 			
 			var nav_coord = _C.NAV_TILE_WALKABLE
@@ -367,17 +427,17 @@ func _calculate_visuals_task(coord: Vector2i, data: ChunkData) -> void:
 	_queue_visual_update(coord, result)
 
 
-func _get_terrain_bitmask_at(data: ChunkData, x: int, y: int, center_id: int) -> int:
+func _get_terrain_bitmask_at(data: ChunkData, x: int, y: int, center_id: int, layer_index: int = 0) -> int:
 	# 检查 8 邻居
-	var left = data.get_terrain(x - 1, y) == center_id
-	var right = data.get_terrain(x + 1, y) == center_id
-	var top = data.get_terrain(x, y - 1) == center_id
-	var bottom = data.get_terrain(x, y + 1) == center_id
+	var left = data.get_terrain(x - 1, y, layer_index) == center_id
+	var right = data.get_terrain(x + 1, y, layer_index) == center_id
+	var top = data.get_terrain(x, y - 1, layer_index) == center_id
+	var bottom = data.get_terrain(x, y + 1, layer_index) == center_id
 	
-	var top_left = data.get_terrain(x - 1, y - 1) == center_id
-	var top_right = data.get_terrain(x + 1, y - 1) == center_id
-	var bottom_left = data.get_terrain(x - 1, y + 1) == center_id
-	var bottom_right = data.get_terrain(x + 1, y + 1) == center_id
+	var top_left = data.get_terrain(x - 1, y - 1, layer_index) == center_id
+	var top_right = data.get_terrain(x + 1, y - 1, layer_index) == center_id
+	var bottom_left = data.get_terrain(x - 1, y + 1, layer_index) == center_id
+	var bottom_right = data.get_terrain(x + 1, y + 1, layer_index) == center_id
 	
 	# 标准化
 	if top_left: top_left = top and left
@@ -407,6 +467,10 @@ func _lookup_terrain_tile(t_set: int, t_id: int, bitmask: int):
 		# Bitmask 0 (无连接) 通常代表单块
 		if tiles.has(0): return tiles[0]
 	return null
+
+func _deterministic_index(count: int, x: int, y: int, id: int) -> int:
+	var h = int(((x * 73856093) ^ (y * 19349663) ^ (id * 83492791)) & 0x7fffffff)
+	return h % max(1, count)
 
 
 # =============================================================================
@@ -454,7 +518,7 @@ func _process(_delta: float) -> void:
 		# WorldManager 稍后如果判定不需要，会调用 clear_chunk。
 		
 		# 检查数据有效性（防止任务失败导致的问题）
-		if not data.has("ground"):
+		if not data.has("terrain"):
 			# print("[GlobalMapController] Task failed or returned invalid data for chunk %s" % coord)
 			continue
 		

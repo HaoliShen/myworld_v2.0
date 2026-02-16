@@ -87,6 +87,7 @@ func _unhandled_input(event: InputEvent) -> void:
 
 func _handle_mouse_button(event: InputEventMouseButton) -> void:
 	# UI 阻断检查 - 如果鼠标在 UI 上，不处理
+	
 	if is_mouse_over_ui():
 		return
 

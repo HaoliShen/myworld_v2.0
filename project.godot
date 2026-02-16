@@ -8,13 +8,17 @@
 
 config_version=5
 
+[animation]
+
+compatibility/default_parent_skeleton_in_mesh_instance_3d=true
+
 [application]
 
 config/name="MyWorld"
 config/description="2D Open World with Pseudo-Height Terrain System"
 config/version="0.1.0"
 run/main_scene="res://Scenes/World/World.tscn"
-config/features=PackedStringArray("4.5", "Forward Plus")
+config/features=PackedStringArray("4.6", "Forward Plus")
 config/icon="res://icon.svg"
 
 [autoload]
@@ -23,9 +27,10 @@ SignalBus="*res://Scripts/autoload/SignalBus.gd"
 SaveSystem="*res://Scripts/autoload/SaveSystem.gd"
 InputManager="*res://Scripts/autoload/InputManager.gd"
 RegionDatabase="*res://Scripts/autoload/RegionDatabase.gd"
-Console="*res://addons/godot-console/scripts/console.gd"
-PhantomCameraManager="*res://addons/phantom_camera/scripts/managers/phantom_camera_manager.gd"
+Console="*uid://d4i40wvy3h7mj"
+PhantomCameraManager="*uid://duq6jhf6unyis"
 BetterTerrain="*res://addons/better-terrain/BetterTerrain.gd"
+SelectionManager="*res://Scripts/autoload/SelectionManager.gd"
 
 [display]
 

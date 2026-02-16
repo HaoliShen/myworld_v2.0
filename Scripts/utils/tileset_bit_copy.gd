@@ -7,7 +7,7 @@ extends EditorScript
 const TILESET_PATH = "res://Assets/Tilesets/test_tileset.tres"
 
 # 2. 【模板源】已经画好遮罩的 Source ID
-const TEMPLATE_SOURCE_ID = 2
+const TEMPLATE_SOURCE_ID = 10
 
 # 3. 【模板地形 ID】模板源里使用的是哪个地形 ID？
 # (例如：你在 ID=1 的图里画的是“草地”，草地在地形列表排第0，这里就填0)
@@ -16,8 +16,10 @@ const TEMPLATE_TERRAIN_ID = 0
 # 4. 【目标配置】格式：{ 目标SourceID : 目标TerrainID }
 # 意思：把模板复制给 Source ID 2，设为地形 1；复制给 Source ID 3，设为地形 2
 const TARGETS = {
-	7: 1,  # 比如：Source 2 是“雪地”，对应地形列表 ID 1
-	5: 2   # 比如：Source 3 是“沙漠”，对应地形列表 ID 2
+	7: 4,  # 比如：Source 2 是“雪地”，对应地形列表 ID 1
+	11: 5,   # 比如：Source 3 是“沙漠”，对应地形列表 ID 2
+	12: 6,   # 比如：Source 3 是“沙漠”，对应地形列表 ID 2
+	13: 7   # 比如：Source 3 是“沙漠”，对应地形列表 ID 2
 }
 
 # 5. 地形集合 Set ID (默认通常是 0)

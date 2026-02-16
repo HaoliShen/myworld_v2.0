@@ -41,6 +41,9 @@ const RADIUS_DATA: int = _C.DATA_LOAD_RADIUS
 ## GlobalMapController 引用 (环境渲染控制器)
 var _map_controller = null
 
+## SelectionManager 引用
+var _selection_manager = null
+
 # =============================================================================
 # 核心属性 (Core Properties)
 # =============================================================================
@@ -111,6 +114,9 @@ func initialize_world(seed: int) -> void:
 	if "world_manager" in _map_controller:
 		_map_controller.world_manager = self
 
+	# 获取 SelectionManager
+	_selection_manager = get_node_or_null("/root/SelectionManager")
+
 	_is_initialized = true
 	world_initialized.emit(seed)
 	SignalBus.world_initialized.emit(seed)
@@ -146,7 +152,9 @@ func _startup_world() -> void:
 
 	var interaction_manager = get_node_or_null("/root/World/Managers/InteractionManager")
 	if interaction_manager:
-		interaction_manager.set_player(_player)
+		# interaction_manager.set_player(_player)
+		# 自动选中玩家
+		if _selection_manager: _selection_manager.select_unit(_player)
 
 	var start_chunk := _MapUtils.world_to_chunk(spawn_pos)
 	update_chunks(start_chunk)
