@@ -1,0 +1,42 @@
+# Godot 4+ specific ignores
+.godot/
+*.translation
+
+# Android/IOS export
+android/
+ios/
+
+# IDEs and Editors
+.trae/
+.claude/
+.vscode/
+.idea/
+*.sln
+*.csproj
+*.unityproj
+
+# OS specific
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Temporary and Backup files
+*.tmp
+*.bak
+*~
+*.log
+
+# Python / Jupyter Notebooks (found in Assets)
+.ipynb_checkpoints/
+__pycache__/
+
+# Custom Project Metadata (generated .uid files)
+# *.uid
+
+# Export builds
+releases/
+builds/
+export/
+
+# Local configuration
+override.cfg

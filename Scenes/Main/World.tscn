@@ -1,0 +1,96 @@
+[gd_scene format=3 uid="uid://ckoeuo3m2frr"]
+
+[ext_resource type="Script" uid="uid://dvtdyhvv3oebm" path="res://Scripts/world_scene/WorldManager.gd" id="1_worldmgr"]
+[ext_resource type="Script" uid="uid://b4qqh2sgx72es" path="res://Scripts/world_scene/InteractionManager.gd" id="2_interactionmgr"]
+[ext_resource type="Script" uid="uid://db0jgksitlkwd" path="res://Scripts/world_scene/MapGenerator.gd" id="3_mapgen"]
+[ext_resource type="Script" uid="uid://doabdwec1hofs" path="res://Scripts/world_scene/GlobalMapController.gd" id="4_mapctrl"]
+[ext_resource type="PackedScene" path="res://Scenes/UI/HUD.tscn" id="5_hud"]
+[ext_resource type="PackedScene" path="res://Scenes/UI/DebugPanel.tscn" id="6_debug"]
+[ext_resource type="PackedScene" path="res://Scenes/UI/BuildMenu.tscn" id="7_buildmenu"]
+[ext_resource type="Script" uid="uid://b1cw6fkgaj0oa" path="res://Scripts/world_scene/TerrainObjectManager.gd" id="8_lp0bp"]
+[ext_resource type="PackedScene" path="res://Scenes/UI/TileInfoPanel.tscn" id="8_tileinfo"]
+[ext_resource type="Script" uid="uid://couw105c3bde4" path="res://addons/godot_state_charts/state_chart.gd" id="10_statechart"]
+[ext_resource type="Script" uid="uid://jk2jm1g6q853" path="res://addons/godot_state_charts/compound_state.gd" id="11_compound"]
+[ext_resource type="Script" uid="uid://cytafq8i1y8qm" path="res://addons/godot_state_charts/atomic_state.gd" id="12_atomic"]
+[ext_resource type="Script" uid="uid://cf1nsco3w0mf6" path="res://addons/godot_state_charts/transition.gd" id="13_transition"]
+[ext_resource type="Script" uid="uid://bd046eokvcnu2" path="res://addons/phantom_camera/scripts/phantom_camera_host/phantom_camera_host.gd" id="14_pcamhost"]
+
+[node name="World" type="Node" unique_id=1038242496]
+
+[node name="Managers" type="Node" parent="." unique_id=1702882861]
+
+[node name="WorldManager" type="Node" parent="Managers" unique_id=1985546303]
+script = ExtResource("1_worldmgr")
+
+[node name="MapGenerator" type="Node" parent="Managers/WorldManager" unique_id=758927260]
+script = ExtResource("3_mapgen")
+forest_tree_density = 0.3
+
+[node name="ActiveChunks" type="Node" parent="Managers/WorldManager" unique_id=657005207]
+
+[node name="InteractionManager" type="Node" parent="Managers" unique_id=473315694]
+script = ExtResource("2_interactionmgr")
+
+[node name="StateChart" type="Node" parent="Managers/InteractionManager" unique_id=753246441]
+script = ExtResource("10_statechart")
+
+[node name="Root" type="Node" parent="Managers/InteractionManager/StateChart" unique_id=1405487947]
+script = ExtResource("11_compound")
+initial_state = NodePath("BuildMode")
+
+[node name="Normal" type="Node" parent="Managers/InteractionManager/StateChart/Root" unique_id=1292533728]
+script = ExtResource("12_atomic")
+
+[node name="ToBuildMode" type="Node" parent="Managers/InteractionManager/StateChart/Root/Normal" unique_id=1552344320]
+script = ExtResource("13_transition")
+event = &"build_requested"
+delay_in_seconds = "0.0"
+
+[node name="BuildMode" type="Node" parent="Managers/InteractionManager/StateChart/Root" unique_id=1690619984]
+script = ExtResource("12_atomic")
+
+[node name="ToNormal" type="Node" parent="Managers/InteractionManager/StateChart/Root/BuildMode" unique_id=745923175]
+script = ExtResource("13_transition")
+event = &"cancel"
+delay_in_seconds = "0.0"
+
+[node name="TerrainObjectManager" type="Node" parent="Managers" unique_id=1846130441]
+script = ExtResource("8_lp0bp")
+
+[node name="Environment" type="Node2D" parent="." unique_id=1889176356]
+y_sort_enabled = true
+script = ExtResource("4_mapctrl")
+
+[node name="Camera2D" type="Camera2D" parent="Environment" unique_id=1449061737]
+top_level = true
+process_callback = 0
+
+[node name="PhantomCameraHost" type="Node" parent="Environment/Camera2D" unique_id=1378394825]
+process_priority = 300
+process_physics_priority = 300
+script = ExtResource("14_pcamhost")
+
+[node name="EntityContainer" type="Node2D" parent="Environment" unique_id=2091695374]
+unique_name_in_owner = true
+y_sort_enabled = true
+
+[node name="UI" type="CanvasLayer" parent="." unique_id=445366370]
+
+[node name="HUD" parent="UI" unique_id=2102685688 instance=ExtResource("5_hud")]
+
+[node name="DebugPanel" parent="UI" unique_id=850007926 instance=ExtResource("6_debug")]
+
+[node name="BuildMenu" parent="UI" unique_id=1345650324 instance=ExtResource("7_buildmenu")]
+
+[node name="TileInfoPanel" parent="UI" unique_id=1708867188 instance=ExtResource("8_tileinfo")]
+
+[node name="DebugConsole" type="Control" parent="UI" unique_id=345355063]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="DebugOutput" type="Label" parent="UI" unique_id=1395871865]

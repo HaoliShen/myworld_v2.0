@@ -150,6 +150,14 @@ const OBJECT_RENDER_LAYER_TABLE: Dictionary = {
 	ID_STONE: Layer.OBSTACLE
 }
 
+## 物体标签表 (Tag -> Array[ID])
+## 用于: 泛型搜索 (如 NPC 寻找 "tree" 而不关心具体 ID)
+const OBJECT_TAG_TABLE: Dictionary = {
+	"tree": [ID_TREE],
+	"stone": [ID_STONE],
+	"grass": [ID_GRASS]
+}
+
 # =============================================================================
 # 输入配置 (Input Configuration)
 # =============================================================================

@@ -17,7 +17,7 @@ compatibility/default_parent_skeleton_in_mesh_instance_3d=true
 config/name="MyWorld"
 config/description="2D Open World with Pseudo-Height Terrain System"
 config/version="0.1.0"
-run/main_scene="res://Scenes/World/World.tscn"
+run/main_scene="res://Scenes/Main/World.tscn"
 config/features=PackedStringArray("4.6", "Forward Plus")
 config/icon="res://icon.svg"
 

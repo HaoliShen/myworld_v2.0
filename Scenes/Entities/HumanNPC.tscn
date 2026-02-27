@@ -1,0 +1,320 @@
+[gd_scene format=3 uid="uid://cqbx6wtiu1r32"]
+
+[ext_resource type="Script" uid="uid://dl7rq2q6dk51w" path="res://Scripts/entity/entity_root/HumanNPC.gd" id="1_player"]
+[ext_resource type="Texture2D" uid="uid://do7mkes1ts137" path="res://Assets/Sprites/cut_tree_test.png" id="10_0aity"]
+[ext_resource type="Texture2D" uid="uid://cg5aklkjo5kbp" path="res://Assets/Sprites/Idle_Side-Sheet.png" id="11_hgdn8"]
+[ext_resource type="Script" uid="uid://bdlk0jru88boc" path="res://Scripts/entity/interaction/human/MovementController.gd" id="11_move_ctrl"]
+[ext_resource type="Script" uid="uid://bni566ikmrs4y" path="res://Scripts/entity/interaction/human/HealthComponent.gd" id="12_health"]
+[ext_resource type="Texture2D" uid="uid://cwpowvwa4u8t8" path="res://Assets/Sprites/mine_test.png" id="12_t6xah"]
+[ext_resource type="Script" uid="uid://dhyevi3skogd8" path="res://Scripts/entity/interaction/human/AttackBehavior.gd" id="13_attack"]
+[ext_resource type="Script" uid="uid://dcv3g8ecch615" path="res://Scripts/entity/interaction/human/ChopBehavior.gd" id="13_chop"]
+[ext_resource type="Script" uid="uid://02cqkl5yw5o5" path="res://Scripts/entity/interaction/human/GatherBehavior.gd" id="13_gather"]
+[ext_resource type="Script" uid="uid://dbbn67upxehnf" path="res://Scripts/entity/interaction/InteractionComponent.gd" id="13_interact_comp"]
+[ext_resource type="Script" uid="uid://cior5a48cn6lo" path="res://Scripts/entity/interaction/human/MineBehavior.gd" id="13_mine"]
+[ext_resource type="Texture2D" uid="uid://db6qtr77ppk6a" path="res://Assets/Sprites/Run_Side-Sheet.png" id="13_yheof"]
+[ext_resource type="Script" uid="uid://db0rsv3xltc4u" path="res://Scripts/entity/animation/AnimationComponent.gd" id="14_anim_comp"]
+[ext_resource type="Script" uid="uid://b5ila6n5luxrp" path="res://Scripts/entity/interaction/human/NPCInteractionBehavior.gd" id="14_npc_behavior"]
+[ext_resource type="Script" uid="uid://bk6u18smdu0ao" path="res://Scripts/entity/animation/human/IdleLogic.gd" id="15_idle"]
+[ext_resource type="Script" uid="uid://b4tlx4q0xjatp" path="res://Scripts/entity/animation/human/RunLogic.gd" id="16_run"]
+[ext_resource type="Script" uid="uid://fwyrhfwhsib2" path="res://Scripts/entity/animation/human/AttackLogic.gd" id="17_attack_anim"]
+[ext_resource type="Script" uid="uid://dae3tmuwdntod" path="res://Scripts/entity/animation/human/ChopLogic.gd" id="17_chop_anim"]
+[ext_resource type="Script" uid="uid://324iyl3lyh1n" path="res://Scripts/entity/animation/human/GatherLogic.gd" id="17_gather_anim"]
+[ext_resource type="Script" uid="uid://dmd67mxj8sd3a" path="res://Scripts/entity/animation/human/MineLogic.gd" id="17_mine_anim"]
+[ext_resource type="Script" uid="uid://bg4ycebdti3kh" path="res://Scripts/player_scene/ShadowGenerator.gd" id="17_shadow"]
+[ext_resource type="Script" uid="uid://hwel5r36tn4f" path="res://Scripts/entity/ai/NPCBrain.gd" id="18_npc_brain"]
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_86atj"]
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_ejhnn"]
+atlas = ExtResource("10_0aity")
+region = Rect2(0, 0, 64, 64)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_cd6b6"]
+atlas = ExtResource("10_0aity")
+region = Rect2(64, 0, 64, 64)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_xggc7"]
+atlas = ExtResource("10_0aity")
+region = Rect2(128, 0, 64, 64)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_rhvgf"]
+atlas = ExtResource("10_0aity")
+region = Rect2(192, 0, 64, 64)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_abqr1"]
+atlas = ExtResource("10_0aity")
+region = Rect2(256, 0, 64, 64)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_rbvjg"]
+atlas = ExtResource("10_0aity")
+region = Rect2(320, 0, 64, 64)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_bydt1"]
+atlas = ExtResource("10_0aity")
+region = Rect2(384, 0, 64, 64)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_okpjm"]
+atlas = ExtResource("10_0aity")
+region = Rect2(448, 0, 64, 64)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_yu48m"]
+atlas = ExtResource("11_hgdn8")
+region = Rect2(0, 0, 64, 64)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_jpvho"]
+atlas = ExtResource("11_hgdn8")
+region = Rect2(64, 0, 64, 64)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_toelj"]
+atlas = ExtResource("11_hgdn8")
+region = Rect2(128, 0, 64, 64)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_l8r55"]
+atlas = ExtResource("11_hgdn8")
+region = Rect2(192, 0, 64, 64)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_xilvn"]
+atlas = ExtResource("12_t6xah")
+region = Rect2(0, 0, 64, 64)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_sgkpy"]
+atlas = ExtResource("12_t6xah")
+region = Rect2(64, 0, 64, 64)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_jmt84"]
+atlas = ExtResource("12_t6xah")
+region = Rect2(128, 0, 64, 64)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_55uah"]
+atlas = ExtResource("12_t6xah")
+region = Rect2(192, 0, 64, 64)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_lro1s"]
+atlas = ExtResource("12_t6xah")
+region = Rect2(256, 0, 64, 64)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_m16cr"]
+atlas = ExtResource("12_t6xah")
+region = Rect2(320, 0, 64, 64)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_seo8a"]
+atlas = ExtResource("12_t6xah")
+region = Rect2(384, 0, 64, 64)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_noro0"]
+atlas = ExtResource("12_t6xah")
+region = Rect2(448, 0, 64, 64)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_30t7l"]
+atlas = ExtResource("13_yheof")
+region = Rect2(0, 0, 64, 64)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_xhbio"]
+atlas = ExtResource("13_yheof")
+region = Rect2(64, 0, 64, 64)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_ut4d4"]
+atlas = ExtResource("13_yheof")
+region = Rect2(128, 0, 64, 64)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_lc3le"]
+atlas = ExtResource("13_yheof")
+region = Rect2(192, 0, 64, 64)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_6mnmp"]
+atlas = ExtResource("13_yheof")
+region = Rect2(256, 0, 64, 64)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_l5j1p"]
+atlas = ExtResource("13_yheof")
+region = Rect2(320, 0, 64, 64)
+
+[sub_resource type="SpriteFrames" id="SpriteFrames_w67ft"]
+animations = [{
+"frames": [{
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_ejhnn")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_cd6b6")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_xggc7")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_rhvgf")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_abqr1")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_rbvjg")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_bydt1")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_okpjm")
+}],
+"loop": true,
+"name": &"chop",
+"speed": 7.0
+}, {
+"frames": [{
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_yu48m")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_jpvho")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_toelj")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_l8r55")
+}],
+"loop": true,
+"name": &"idle",
+"speed": 5.0
+}, {
+"frames": [{
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_xilvn")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_sgkpy")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_jmt84")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_55uah")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_lro1s")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_m16cr")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_seo8a")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_noro0")
+}],
+"loop": true,
+"name": &"mine",
+"speed": 6.0
+}, {
+"frames": [{
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_30t7l")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_xhbio")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_ut4d4")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_lc3le")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_6mnmp")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_l5j1p")
+}],
+"loop": true,
+"name": &"walk",
+"speed": 7.5
+}]
+
+[node name="root" type="CharacterBody2D" unique_id=915793428]
+collision_layer = 8
+script = ExtResource("1_player")
+
+[node name="CollisionShape" type="CollisionShape2D" parent="." unique_id=1864708068]
+shape = SubResource("RectangleShape2D_86atj")
+
+[node name="InteractionShape" type="Area2D" parent="." unique_id=2048413764]
+collision_layer = 0
+collision_mask = 2
+
+[node name="InteractionComponent" type="Node2D" parent="." unique_id=1951595901]
+script = ExtResource("13_interact_comp")
+
+[node name="HealthComponent" type="Node" parent="InteractionComponent" unique_id=303437062]
+script = ExtResource("12_health")
+
+[node name="MovementComponent" type="Node" parent="InteractionComponent" unique_id=1277552105 node_paths=PackedStringArray("character_body", "navigation_agent")]
+script = ExtResource("11_move_ctrl")
+character_body = NodePath("../..")
+navigation_agent = NodePath("../../NavigationAgent")
+
+[node name="NPCInteractionBehavior" type="Node" parent="InteractionComponent" unique_id=94780803 node_paths=PackedStringArray("animation_logic")]
+script = ExtResource("14_npc_behavior")
+animation_logic = NodePath("../../AnimationComponent/Idle")
+
+[node name="ChopBehavior" type="Node" parent="InteractionComponent" unique_id=685644520 node_paths=PackedStringArray("animation_logic")]
+script = ExtResource("13_chop")
+animation_logic = NodePath("../../AnimationComponent/ChopLogic")
+
+[node name="MineBehavior" type="Node" parent="InteractionComponent" unique_id=1811829418 node_paths=PackedStringArray("animation_logic")]
+script = ExtResource("13_mine")
+animation_logic = NodePath("../../AnimationComponent/MineLogic")
+
+[node name="GatherBehavior" type="Node" parent="InteractionComponent" unique_id=1085375715 node_paths=PackedStringArray("animation_logic")]
+script = ExtResource("13_gather")
+animation_logic = NodePath("../../AnimationComponent/GatherLogic")
+
+[node name="AttackBehavior" type="Node" parent="InteractionComponent" unique_id=94780802 node_paths=PackedStringArray("animation_logic")]
+script = ExtResource("13_attack")
+animation_logic = NodePath("../../AnimationComponent/AttackLogic")
+
+[node name="Visuals" type="Node2D" parent="." unique_id=2012902481]
+
+[node name="AnimatedSprite2D" type="AnimatedSprite2D" parent="Visuals" unique_id=858956862]
+position = Vector2(0, -10.000001)
+scale = Vector2(0.7, 0.7)
+sprite_frames = SubResource("SpriteFrames_w67ft")
+animation = &"chop"
+autoplay = "idle"
+
+[node name="SelectionMarker" type="Sprite2D" parent="Visuals" unique_id=831441175]
+
+[node name="Shadow" type="Sprite2D" parent="Visuals" unique_id=1262021233]
+script = ExtResource("17_shadow")
+
+[node name="NavigationAgent" type="NavigationAgent2D" parent="." unique_id=1581994278]
+path_desired_distance = 8.0
+target_desired_distance = 8.0
+debug_use_custom = true
+
+[node name="AnimationComponent" type="Node2D" parent="." unique_id=201937132 node_paths=PackedStringArray("initial_state", "animated_sprite")]
+script = ExtResource("14_anim_comp")
+initial_state = NodePath("Idle")
+animated_sprite = NodePath("../Visuals/AnimatedSprite2D")
+
+[node name="Idle" type="Node" parent="AnimationComponent" unique_id=383852481]
+script = ExtResource("15_idle")
+
+[node name="walk" type="Node" parent="AnimationComponent" unique_id=638084927 node_paths=PackedStringArray("movement_controller", "animated_sprite")]
+script = ExtResource("16_run")
+movement_controller = NodePath("../../InteractionComponent/MovementComponent")
+animated_sprite = NodePath("../../Visuals/AnimatedSprite2D")
+
+[node name="ChopLogic" type="Node" parent="AnimationComponent" unique_id=1945013086]
+script = ExtResource("17_chop_anim")
+
+[node name="MineLogic" type="Node" parent="AnimationComponent" unique_id=837526106]
+script = ExtResource("17_mine_anim")
+
+[node name="GatherLogic" type="Node" parent="AnimationComponent" unique_id=742490797]
+script = ExtResource("17_gather_anim")
+
+[node name="AttackLogic" type="Node" parent="AnimationComponent" unique_id=1581372632]
+script = ExtResource("17_attack_anim")
+
+[node name="NPCBrain" type="Node" parent="." unique_id=788854504]
+script = ExtResource("18_npc_brain")

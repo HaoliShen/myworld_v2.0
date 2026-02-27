@@ -1,0 +1,6 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" uid="uid://3bm3doxkxei8" path="res://Scripts/world_scene/ChunkLogic.gd" id="1_chunklogic"]
+
+[node name="ChunkLogic" type="Node"]
+script = ExtResource("1_chunklogic")

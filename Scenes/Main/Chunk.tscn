@@ -1,0 +1,53 @@
+[gd_scene format=3 uid="uid://cgeblaq6n5di3"]
+
+[ext_resource type="TileSet" uid="uid://d3cyvm6xn5ov1" path="res://Assets/Tilesets/test_tileset.tres" id="1_y3xke"]
+[ext_resource type="TileSet" uid="uid://e1cb042qyxy1" path="res://Assets/Tilesets/main_tileset.tres" id="2_anrwg"]
+[ext_resource type="Script" uid="uid://cij7bh8ghniuf" path="res://Scripts/world_scene/ChunkVisual.gd" id="3_script"]
+
+[node name="root" type="Node2D" unique_id=449335992]
+y_sort_enabled = true
+script = ExtResource("3_script")
+
+[node name="GroundLayer" type="TileMapLayer" parent="." unique_id=253381840]
+z_index = -10
+tile_set = ExtResource("1_y3xke")
+occlusion_enabled = false
+collision_enabled = false
+navigation_enabled = false
+
+[node name="ExH1Layer" type="TileMapLayer" parent="." unique_id=1020557644]
+z_index = -9
+tile_set = ExtResource("1_y3xke")
+
+[node name="ExH2Layer" type="TileMapLayer" parent="." unique_id=1128566656]
+z_index = -8
+tile_set = ExtResource("1_y3xke")
+
+[node name="ExH3Layer" type="TileMapLayer" parent="." unique_id=1056810082]
+z_index = -7
+tile_set = ExtResource("1_y3xke")
+
+[node name="ExH4Layer" type="TileMapLayer" parent="." unique_id=1464077702]
+z_index = -6
+tile_set = ExtResource("1_y3xke")
+
+[node name="DecorationLayer" type="TileMapLayer" parent="." unique_id=230587239]
+y_sort_enabled = true
+tile_set = ExtResource("2_anrwg")
+occlusion_enabled = false
+collision_enabled = false
+navigation_enabled = false
+
+[node name="ObstacleLayer" type="TileMapLayer" parent="." unique_id=1480767527]
+y_sort_enabled = true
+tile_set = ExtResource("2_anrwg")
+occlusion_enabled = false
+collision_enabled = false
+navigation_enabled = false
+
+[node name="NavigationLayer" type="TileMapLayer" parent="." unique_id=968582523]
+visible = false
+tile_set = ExtResource("2_anrwg")
+occlusion_enabled = false
+collision_enabled = false
+navigation_visibility_mode = 1
