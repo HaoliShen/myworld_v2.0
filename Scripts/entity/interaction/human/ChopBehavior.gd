@@ -57,11 +57,14 @@ func execute(target: Node) -> void:
 			
 	# 关键点：必须先成功抢到锁（receive_interaction=true），才能播放砍树动画并启动循环
 	# 否则在“同时交互抢锁失败”的情况下，会出现：未抢到锁的一方也播放砍树动画，甚至影响树实体生命周期
+	# 注意：极端情况下目标可能在首击就死亡，导致 stop_interaction 把引用清空；这里提前缓存目标位置并二次校验。
+	var target_pos = _current_target_interaction.get_interaction_position()
 	var ok := _perform_chop()
 	if not ok:
 		return
+	if not is_instance_valid(_current_target_interaction):
+		return
 	_has_started = true
-	var target_pos = _current_target_interaction.get_interaction_position()
 	request_action_animation({ "target_pos": target_pos })
 	_timer.start()
 

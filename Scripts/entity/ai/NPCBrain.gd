@@ -21,6 +21,8 @@ enum State { IDLE, WANDER, WORK, INTERACT }
 @export var detection_radius: float = 500.0 # 资源感知半径
 @export var idle_time_min: float = 2.0 # 最小空闲时间
 @export var idle_time_max: float = 5.0 # 最大空闲时间
+@export var work_tags: Array[String] = ["tree", "stone", "grass"] # 工作目标类型（按优先级扫描）
+@export var interaction_approach_distance: float = 10.0 # 接近到该距离后触发一次“脱困判定”（停止移动并重新评估下一步），不用于放宽交互距离（不能超过被交互物behit中定义的最大交互范围）
 
 # 内部状态
 var current_state: State = State.IDLE
@@ -30,6 +32,21 @@ var terrain_object_manager: Node
 
 var _target_interaction_component: InteractionComponent = null # 当前交互目标组件
 var _target_tile: Vector2i = Vector2i(-1, -1) # 当前交互目标地块 (需先实例化)
+var _target_action: StringName = &"chop" # 当前目标所需动作（chop/mine/gather）
+var _target_world_pos: Vector2 = Vector2.ZERO # 目标世界坐标（用于“接近即交互”）
+var _has_target_world_pos: bool = false
+
+func _get_action_for_tag(tag: String) -> StringName:
+	# 资源类型 -> 动作映射（与 BeHit.actions 和单位侧 Behavior 一致）
+	match tag:
+		"tree":
+			return &"chop"
+		"stone":
+			return &"mine"
+		"grass":
+			return &"gather"
+		_:
+			return &"chop"
 
 func _ready() -> void:
 	owner_npc = get_parent() as HumanNPC
@@ -59,6 +76,65 @@ func _ready() -> void:
 	await get_tree().create_timer(1.0).timeout
 		
 	_enter_state(State.IDLE)
+
+func _physics_process(_delta: float) -> void:
+	# 关键修复：
+	# 多个 NPC 争抢同一个资源点时，失败者可能因为“目标位置被其他 NPC 占住”而导致导航永远无法判定到达，
+	# 进而持续处于 WORK（移动）状态，动画表现为原地左右走动且不会恢复。
+	# 这里改为：只要“接近到一定距离”，就停止移动并尝试交互/或者放弃目标。
+	if current_state != State.WORK:
+		return
+	if not owner_npc:
+		return
+	if not _has_target_world_pos:
+		return
+
+	# 如果目标实体已经被销毁或变为不可交互（被占用），直接放弃，防止卡住
+	if _target_interaction_component and is_instance_valid(_target_interaction_component):
+		if not _target_interaction_component.can_accept_interaction(_target_action):
+			owner_npc.command_stop_move()
+			_enter_state(State.IDLE)
+			return
+	elif _target_interaction_component and not is_instance_valid(_target_interaction_component):
+		_target_interaction_component = null
+
+	var dist := owner_npc.global_position.distance_to(_target_world_pos)
+	if dist <= interaction_approach_distance:
+		owner_npc.command_stop_move()
+		_try_begin_interaction_nearby()
+
+func _try_begin_interaction_nearby() -> void:
+	# 在接近目标时触发（不依赖 destination_reached），让 NPC 能在拥挤情况下仍然退出“走路循环”
+	if current_state != State.WORK:
+		return
+
+	# Tile 目标：先实体化或复用活跃实体
+	if not _target_interaction_component and _target_tile != Vector2i(-1, -1) and terrain_object_manager:
+		var entity = terrain_object_manager.request_interaction(_target_tile, -1)
+		if entity:
+			_target_interaction_component = _get_interaction_component(entity)
+
+	# 如果仍然没有目标，放弃
+	if not _target_interaction_component or not is_instance_valid(_target_interaction_component):
+		_enter_state(State.IDLE)
+		return
+
+	# 检查是否可交互（包含 busy 锁，不包含距离）
+	if not _target_interaction_component.can_accept_interaction(_target_action):
+		_enter_state(State.IDLE)
+		return
+
+	# 结构性修复（方案 A）：
+	# - 交互距离的权威规则必须来自目标侧 BeHitComponent.interaction_range
+	# - 接近阈值 interaction_approach_distance 只用于“脱困判定”，不能放宽交互距离
+	# 结论：只有当 NPC 已经处在允许交互范围内，才进入 INTERACT；否则继续靠近交互点。
+	if not _target_interaction_component.is_instigator_in_interaction_range(owner_npc):
+		_target_world_pos = _target_interaction_component.get_interaction_position()
+		_has_target_world_pos = true
+		owner_npc.command_move_to(_target_world_pos)
+		return
+
+	_enter_state(State.INTERACT)
 
 # 状态切换入口
 func _enter_state(new_state: State) -> void:
@@ -114,39 +190,69 @@ func _start_wandering() -> void:
 func _start_working() -> void:
 	_target_interaction_component = null
 	_target_tile = Vector2i(-1, -1)
+	_target_action = &"chop"
+	_has_target_world_pos = false
 	
 	# 使用 TerrainObjectManager 扫描环境
 	if terrain_object_manager and terrain_object_manager.has_method("scan_for_objects"):
-		var results = terrain_object_manager.scan_for_objects(owner_npc.global_position, detection_radius, "tree")
-		print("[NPCBrain] %s scan_for_objects size=%s" % [str(owner_npc.name), str(results.size())])
-		if results.size() > 0:
-			var first = results[0]
-			print("[NPCBrain] %s first_result type=%s dist_sq=%s" % [
-				str(owner_npc.name),
-				str(first.get("type")),
-				str(first.get("dist_sq"))
-			])
-		
-		for result in results:
-			if result.type == "entity":
-				# 找到实体资源
-				var entity = result.target
-				var comp = _get_interaction_component(entity)
-				
-				# 检查是否可用 (未被其他 NPC 占用)
-				if comp and comp.can_accept_interaction(&"chop"):
-					print("[NPCBrain] %s found_tree entity=%s" % [str(owner_npc.name), str(entity.name)])
-					_target_interaction_component = comp
-					owner_npc.command_move_to(comp.get_interaction_position())
-					return
-					
-			elif result.type == "tile":
-				# 找到地块资源 (尚未实体化)
-				_target_tile = result.target
-				var world_pos = result.position
-				print("[NPCBrain] %s found_tree_tile tile=%s pos=%s" % [str(owner_npc.name), str(_target_tile), str(world_pos)])
-				owner_npc.command_move_to(world_pos)
+		# 设计：按 work_tags 优先级扫描，但最终选择“最近且可交互”的目标
+		var best_result: Dictionary = {}
+		var best_tag: String = ""
+		var best_dist_sq: float = INF
+
+		for tag in work_tags:
+			var results = terrain_object_manager.scan_for_objects(owner_npc.global_position, detection_radius, tag)
+			if results.is_empty():
+				continue
+
+			# scan_for_objects 已按距离排序：取最近的一个候选即可
+			var candidate = results[0]
+			var dist_sq = float(candidate.get("dist_sq", INF))
+			if dist_sq < best_dist_sq:
+				best_dist_sq = dist_sq
+				best_result = candidate
+				best_tag = tag
+
+		if best_result.is_empty():
+			_enter_state(State.WANDER)
+			return
+
+		_target_action = _get_action_for_tag(best_tag)
+
+		if best_result.type == "entity":
+			var entity = best_result.target
+			var comp = _get_interaction_component(entity)
+			# 检查是否可用（未被其他 NPC 占用）
+			if comp and comp.can_accept_interaction(_target_action):
+				print("[NPCBrain] %s found_target tag=%s entity=%s action=%s" % [
+					str(owner_npc.name),
+					str(best_tag),
+					str(entity.name),
+					str(_target_action)
+				])
+				_target_interaction_component = comp
+				_target_world_pos = comp.get_interaction_position()
+				_has_target_world_pos = true
+				owner_npc.command_move_to(_target_world_pos)
 				return
+			_enter_state(State.WANDER)
+			return
+
+		elif best_result.type == "tile":
+			# 找到地块资源（尚未实体化）
+			_target_tile = best_result.target
+			var world_pos = best_result.position
+			print("[NPCBrain] %s found_tile tag=%s tile=%s pos=%s action=%s" % [
+				str(owner_npc.name),
+				str(best_tag),
+				str(_target_tile),
+				str(world_pos),
+				str(_target_action)
+			])
+			_target_world_pos = world_pos
+			_has_target_world_pos = true
+			owner_npc.command_move_to(world_pos)
+			return
 	else:
 		print("[NPCBrain] %s no_terrain_object_manager" % [str(owner_npc.name)])
 	
@@ -191,9 +297,8 @@ func _on_destination_reached() -> void:
 			print("[NPCBrain] %s reached_tile_target=%s" % [str(owner_npc.name), str(_target_tile)])
 			# 到达 Tile，请求实体化
 			if terrain_object_manager:
-				# 使用 -1 让 Manager 自动扫描，或者使用正确的层级
-				var tree_layer = _C.OBJECT_RENDER_LAYER_TABLE.get(_C.ID_TREE, _C.Layer.DECORATION)
-				var entity = terrain_object_manager.request_interaction(_target_tile, tree_layer)
+				# 使用 -1 让 Manager 自动扫描对应层级（支持 tree/stone/grass 等同构资源点）
+				var entity = terrain_object_manager.request_interaction(_target_tile, -1)
 				print("[NPCBrain] %s request_interaction entity=%s" % [
 					str(owner_npc.name),
 					str(entity.name) if entity else "null"
@@ -201,8 +306,8 @@ func _on_destination_reached() -> void:
 				if entity:
 					_target_interaction_component = _get_interaction_component(entity)
 				# 如果刚生成就被占用了 (不太可能，但为了安全)
-				if _target_interaction_component and not _target_interaction_component.can_accept_interaction(&"chop"):
-					print("[NPCBrain] %s entity_not_accept_chop" % [str(owner_npc.name)])
+				if _target_interaction_component and not _target_interaction_component.can_accept_interaction(_target_action):
+					print("[NPCBrain] %s entity_not_accept action=%s" % [str(owner_npc.name), str(_target_action)])
 					_enter_state(State.IDLE)
 					return
 					

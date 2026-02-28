@@ -12,6 +12,7 @@
 [ext_resource type="Script" uid="uid://dhyevi3skogd8" path="res://Scripts/entity/interaction/human/AttackBehavior.gd" id="13_attack"]
 [ext_resource type="Script" uid="uid://dcv3g8ecch615" path="res://Scripts/entity/interaction/human/ChopBehavior.gd" id="13_chop"]
 [ext_resource type="Script" uid="uid://02cqkl5yw5o5" path="res://Scripts/entity/interaction/human/GatherBehavior.gd" id="13_gather"]
+[ext_resource type="Texture2D" uid="uid://shgw6fl1emux" path="res://Assets/Sprites/Collect_Side-Sheet.png" id="13_hgdn8"]
 [ext_resource type="Script" uid="uid://dbbn67upxehnf" path="res://Scripts/entity/interaction/InteractionComponent.gd" id="13_interact_comp"]
 [ext_resource type="Script" uid="uid://cior5a48cn6lo" path="res://Scripts/entity/interaction/human/MineBehavior.gd" id="13_mine"]
 [ext_resource type="Texture2D" uid="uid://db6qtr77ppk6a" path="res://Assets/Sprites/Run_Side-Sheet.png" id="13_yheof"]
@@ -59,6 +60,38 @@ region = Rect2(384, 0, 64, 64)
 
 [sub_resource type="AtlasTexture" id="AtlasTexture_okpjm"]
 atlas = ExtResource("10_0aity")
+region = Rect2(448, 0, 64, 64)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_t6xah"]
+atlas = ExtResource("13_hgdn8")
+region = Rect2(0, 0, 64, 64)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_yheof"]
+atlas = ExtResource("13_hgdn8")
+region = Rect2(64, 0, 64, 64)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_vpr8v"]
+atlas = ExtResource("13_hgdn8")
+region = Rect2(128, 0, 64, 64)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_3dua5"]
+atlas = ExtResource("13_hgdn8")
+region = Rect2(192, 0, 64, 64)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_4047b"]
+atlas = ExtResource("13_hgdn8")
+region = Rect2(256, 0, 64, 64)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_4ir5o"]
+atlas = ExtResource("13_hgdn8")
+region = Rect2(320, 0, 64, 64)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_2pky6"]
+atlas = ExtResource("13_hgdn8")
+region = Rect2(384, 0, 64, 64)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_43ygi"]
+atlas = ExtResource("13_hgdn8")
 region = Rect2(448, 0, 64, 64)
 
 [sub_resource type="AtlasTexture" id="AtlasTexture_yu48m"]
@@ -163,6 +196,35 @@ animations = [{
 "loop": true,
 "name": &"chop",
 "speed": 7.0
+}, {
+"frames": [{
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_t6xah")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_yheof")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_vpr8v")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_3dua5")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_4047b")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_4ir5o")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_2pky6")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_43ygi")
+}],
+"loop": true,
+"name": &"gather",
+"speed": 5.0
 }, {
 "frames": [{
 "duration": 1.0,
@@ -286,7 +348,7 @@ tween_resource = SubResource("Resource_nbjwg")
 position = Vector2(0, -10.000001)
 scale = Vector2(0.7, 0.7)
 sprite_frames = SubResource("SpriteFrames_w67ft")
-animation = &"chop"
+animation = &"gather"
 autoplay = "idle"
 
 [node name="SelectionMarker" type="Sprite2D" parent="Visuals" unique_id=831441175]

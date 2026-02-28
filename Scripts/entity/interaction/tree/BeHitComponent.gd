@@ -12,7 +12,7 @@ signal action_failed(reason: String) # 原 interaction_failed
 @export var interaction_area: Area2D
 @export var actions: Array[StringName] = [] # e.g. ["chop", "mine", "talk"]
 @export var interaction_label: String = "Interact" # UI 显示文本
-@export var interaction_range: float = 50.0 # 最大交互距离
+@export var interaction_range: float = 15.0 # 最大交互距离
 @export var data: Dictionary = {} # 自定义数据
 
 var current_interactor: Node = null
@@ -66,6 +66,9 @@ func interact(context: Dictionary) -> bool:
 				str(action),
 				str(actions)
 			])
+			# 注意：这里已经拿到了锁；如果因为“不支持该动作”而失败，必须立刻解锁，
+			# 否则会出现目标长期 busy，后续交互全部失败（尤其是 NPC 或误点击时）。
+			unlock(instigator)
 			action_failed.emit("Action not supported")
 			return false
 
@@ -80,6 +83,9 @@ func interact(context: Dictionary) -> bool:
 				str(interaction_range),
 				str(context.get("action"))
 			])
+			# 注意：这里已经拿到了锁；如果因为“距离不够”而失败，必须解锁，
+			# 否则会锁死目标，造成“明明没人交互但一直 busy”。
+			unlock(instigator)
 			action_failed.emit("Too far")
 			return false
 	

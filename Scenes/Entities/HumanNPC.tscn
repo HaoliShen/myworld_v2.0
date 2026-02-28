@@ -4,6 +4,7 @@
 [ext_resource type="Texture2D" uid="uid://do7mkes1ts137" path="res://Assets/Sprites/cut_tree_test.png" id="10_0aity"]
 [ext_resource type="Texture2D" uid="uid://cg5aklkjo5kbp" path="res://Assets/Sprites/Idle_Side-Sheet.png" id="11_hgdn8"]
 [ext_resource type="Script" uid="uid://bdlk0jru88boc" path="res://Scripts/entity/interaction/human/MovementController.gd" id="11_move_ctrl"]
+[ext_resource type="Texture2D" uid="uid://shgw6fl1emux" path="res://Assets/Sprites/Collect_Side-Sheet.png" id="11_xbfg0"]
 [ext_resource type="Script" uid="uid://bni566ikmrs4y" path="res://Scripts/entity/interaction/human/HealthComponent.gd" id="12_health"]
 [ext_resource type="Texture2D" uid="uid://cwpowvwa4u8t8" path="res://Assets/Sprites/mine_test.png" id="12_t6xah"]
 [ext_resource type="Script" uid="uid://dhyevi3skogd8" path="res://Scripts/entity/interaction/human/AttackBehavior.gd" id="13_attack"]
@@ -55,6 +56,38 @@ region = Rect2(384, 0, 64, 64)
 
 [sub_resource type="AtlasTexture" id="AtlasTexture_okpjm"]
 atlas = ExtResource("10_0aity")
+region = Rect2(448, 0, 64, 64)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_u0ggf"]
+atlas = ExtResource("11_xbfg0")
+region = Rect2(0, 0, 64, 64)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_f2ei6"]
+atlas = ExtResource("11_xbfg0")
+region = Rect2(64, 0, 64, 64)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_g8l5k"]
+atlas = ExtResource("11_xbfg0")
+region = Rect2(128, 0, 64, 64)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_k1ndv"]
+atlas = ExtResource("11_xbfg0")
+region = Rect2(192, 0, 64, 64)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_50q8h"]
+atlas = ExtResource("11_xbfg0")
+region = Rect2(256, 0, 64, 64)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_xjlal"]
+atlas = ExtResource("11_xbfg0")
+region = Rect2(320, 0, 64, 64)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_se8bi"]
+atlas = ExtResource("11_xbfg0")
+region = Rect2(384, 0, 64, 64)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_7ne5l"]
+atlas = ExtResource("11_xbfg0")
 region = Rect2(448, 0, 64, 64)
 
 [sub_resource type="AtlasTexture" id="AtlasTexture_yu48m"]
@@ -159,6 +192,35 @@ animations = [{
 "loop": true,
 "name": &"chop",
 "speed": 7.0
+}, {
+"frames": [{
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_u0ggf")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_f2ei6")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_g8l5k")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_k1ndv")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_50q8h")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_xjlal")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_se8bi")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_7ne5l")
+}],
+"loop": true,
+"name": &"gather",
+"speed": 5.0
 }, {
 "frames": [{
 "duration": 1.0,
@@ -278,7 +340,7 @@ animation_logic = NodePath("../../AnimationComponent/AttackLogic")
 position = Vector2(0, -10.000001)
 scale = Vector2(0.7, 0.7)
 sprite_frames = SubResource("SpriteFrames_w67ft")
-animation = &"chop"
+animation = &"gather"
 autoplay = "idle"
 
 [node name="SelectionMarker" type="Sprite2D" parent="Visuals" unique_id=831441175]
@@ -318,3 +380,4 @@ script = ExtResource("17_attack_anim")
 
 [node name="NPCBrain" type="Node" parent="." unique_id=788854504]
 script = ExtResource("18_npc_brain")
+work_tags = Array[String](["stone"])

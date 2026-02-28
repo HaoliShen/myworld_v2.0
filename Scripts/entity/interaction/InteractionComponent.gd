@@ -200,6 +200,23 @@ func get_interaction_position() -> Vector2:
 		return be_hit_component.interaction_area.global_position
 	return global_position
 
+## 获取被交互物允许的最大交互距离（来自 BeHitComponent.interaction_range）
+## 注意：这是“权威交互距离”，用于保证 NPC/玩家的行为触发不会绕过目标侧规则。
+func get_interaction_range() -> float:
+	if be_hit_component:
+		return float(be_hit_component.interaction_range)
+	return 0.0
+
+## 检查某个交互者是否在允许交互范围内
+## - 只检查距离，不检查 busy/action；busy/action 仍由 can_accept_interaction 负责
+func is_instigator_in_interaction_range(instigator: Node) -> bool:
+	if not be_hit_component or not be_hit_component.interaction_area:
+		return false
+	if not (instigator is Node2D):
+		return false
+	var dist := be_hit_component.interaction_area.global_position.distance_to((instigator as Node2D).global_position)
+	return dist <= float(be_hit_component.interaction_range)
+
 ## 取消/结束接收的交互 (释放锁)
 func cancel_incoming_interaction(instigator: Node) -> void:
 	if be_hit_component:

@@ -1,0 +1,95 @@
+[gd_scene format=3 uid="uid://cxddo6j7nrs2j"]
+
+[ext_resource type="Script" uid="uid://dlvc8kpoukoix" path="res://Scripts/entity/entity_root/GrassEntity.gd" id="1_grass_entity"]
+[ext_resource type="Script" uid="uid://dbbn67upxehnf" path="res://Scripts/entity/interaction/InteractionComponent.gd" id="2_interaction_component"]
+[ext_resource type="Script" uid="uid://dmguyaqb15anm" path="res://Scripts/entity/interaction/tree/BeHitComponent.gd" id="3_behit"]
+[ext_resource type="Script" uid="uid://bni566ikmrs4y" path="res://Scripts/entity/interaction/human/HealthComponent.gd" id="4_health"]
+[ext_resource type="Texture2D" uid="uid://uooejynvrrsi" path="res://Assets/Tilesets/Bushe1.png" id="5_86581"]
+[ext_resource type="Script" uid="uid://db0rsv3xltc4u" path="res://Scripts/entity/animation/AnimationComponent.gd" id="5_anim_component"]
+[ext_resource type="Script" uid="uid://bcbyw4t168j2r" path="res://Scripts/entity/animation/common/SimpleHitLogic.gd" id="6_hit_logic"]
+[ext_resource type="Script" uid="uid://4u1hf00kbdec" path="res://Scripts/entity/animation/common/SimpleDieLogic.gd" id="7_die_logic"]
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_0"]
+size = Vector2(24, 24)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_mmpfv"]
+atlas = ExtResource("5_86581")
+region = Rect2(0, 0, 128, 128)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_ir5t3"]
+atlas = ExtResource("5_86581")
+region = Rect2(256, 0, 128, 128)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_n874c"]
+atlas = ExtResource("5_86581")
+region = Rect2(512, 0, 128, 128)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_r3do1"]
+atlas = ExtResource("5_86581")
+region = Rect2(768, 0, 128, 128)
+
+[sub_resource type="SpriteFrames" id="SpriteFrames_0"]
+animations = [{
+"frames": [{
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_mmpfv")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_ir5t3")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_n874c")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_r3do1")
+}],
+"loop": true,
+"name": &"hit",
+"speed": 5.0
+}]
+
+[node name="GrassEntity" type="Node2D" unique_id=196448739]
+script = ExtResource("1_grass_entity")
+max_health = 5
+
+[node name="InteractionArea" type="Area2D" parent="." unique_id=1886362546]
+collision_layer = 0
+collision_mask = 2
+
+[node name="CollisionShape" type="CollisionShape2D" parent="InteractionArea" unique_id=982086208]
+shape = SubResource("RectangleShape2D_0")
+
+[node name="InteractionComponent" type="Node2D" parent="." unique_id=923868518]
+script = ExtResource("2_interaction_component")
+
+[node name="BeHit" type="Node" parent="InteractionComponent" unique_id=6550511 node_paths=PackedStringArray("interaction_area")]
+script = ExtResource("3_behit")
+interaction_area = NodePath("../../InteractionArea")
+actions = Array[StringName]([&"gather"])
+interaction_label = "Gather"
+
+[node name="HealthComponent" type="Node" parent="InteractionComponent" unique_id=1140278310]
+script = ExtResource("4_health")
+
+[node name="Visuals" type="Node2D" parent="." unique_id=1635943975]
+
+[node name="AnimatedSprite2D" type="AnimatedSprite2D" parent="Visuals" unique_id=2048479728]
+position = Vector2(1.4210855e-14, -2)
+scale = Vector2(0.18945315, 0.19726561)
+sprite_frames = SubResource("SpriteFrames_0")
+animation = &"hit"
+frame_progress = 0.6675151
+
+[node name="AnimationComponent" type="Node2D" parent="." unique_id=1810136603 node_paths=PackedStringArray("initial_state", "animated_sprite", "interaction_component")]
+script = ExtResource("5_anim_component")
+initial_state = NodePath("Hit")
+animated_sprite = NodePath("../Visuals/AnimatedSprite2D")
+interaction_component = NodePath("../InteractionComponent")
+
+[node name="Hit" type="Node" parent="AnimationComponent" unique_id=1535223642 node_paths=PackedStringArray("visuals_node")]
+script = ExtResource("6_hit_logic")
+visuals_node = NodePath("../../Visuals")
+
+[node name="Die" type="Node" parent="AnimationComponent" unique_id=1220312279 node_paths=PackedStringArray("visuals_node")]
+script = ExtResource("7_die_logic")
+visuals_node = NodePath("../../Visuals")

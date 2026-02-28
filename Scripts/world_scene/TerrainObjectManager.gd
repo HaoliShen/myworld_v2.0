@@ -10,7 +10,8 @@ const _MapUtils = preload("res://Scripts/data/MapUtils.gd")
 # 实体场景预制体
 # TODO: 实际路径可能需要根据项目调整
 const TreeEntityScene = preload("res://Scenes/Entities/TreeEntity.tscn")
-# const RockEntityScene = preload("res://Scenes/Entities/RockEntity.tscn")
+const StoneEntityScene = preload("res://Scenes/Entities/StoneEntity.tscn")
+const GrassEntityScene = preload("res://Scenes/Entities/GrassEntity.tscn")
 
 # 活跃的实体字典
 # Key: Vector2i (Tile Coordinate) -> Value: Node2D (Entity Instance)
@@ -171,8 +172,10 @@ func _create_entity(object_id: int, tile_pos: Vector2i, layer: int) -> Node2D:
 	match object_id:
 		_C.ID_TREE:
 			scene = TreeEntityScene
-		# _C.ID_STONE:
-		# 	scene = RockEntityScene
+		_C.ID_STONE:
+			scene = StoneEntityScene
+		_C.ID_GRASS:
+			scene = GrassEntityScene
 			
 	if not scene:
 		print("[TerrainObjectManager] _create_entity no_scene object_id=%s" % [str(object_id)])

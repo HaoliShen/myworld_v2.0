@@ -1,0 +1,72 @@
+[gd_scene format=3 uid="uid://dtb0bt10eus3q"]
+
+[ext_resource type="Script" uid="uid://bqi035wk0ku5s" path="res://Scripts/entity/entity_root/StoneEntity.gd" id="1_stone_entity"]
+[ext_resource type="Script" uid="uid://dbbn67upxehnf" path="res://Scripts/entity/interaction/InteractionComponent.gd" id="2_interaction_component"]
+[ext_resource type="Script" uid="uid://dmguyaqb15anm" path="res://Scripts/entity/interaction/tree/BeHitComponent.gd" id="3_behit"]
+[ext_resource type="Script" uid="uid://bni566ikmrs4y" path="res://Scripts/entity/interaction/human/HealthComponent.gd" id="4_health"]
+[ext_resource type="Script" uid="uid://db0rsv3xltc4u" path="res://Scripts/entity/animation/AnimationComponent.gd" id="5_anim_component"]
+[ext_resource type="Texture2D" uid="uid://drawndcsy8ij7" path="res://Assets/Tilesets/Rock2.png" id="5_luf7m"]
+[ext_resource type="Script" uid="uid://bcbyw4t168j2r" path="res://Scripts/entity/animation/common/SimpleHitLogic.gd" id="6_hit_logic"]
+[ext_resource type="Script" uid="uid://4u1hf00kbdec" path="res://Scripts/entity/animation/common/SimpleDieLogic.gd" id="7_die_logic"]
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_0"]
+size = Vector2(24, 24)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_8pufg"]
+atlas = ExtResource("5_luf7m")
+region = Rect2(0, 0, 64, 64)
+
+[sub_resource type="SpriteFrames" id="SpriteFrames_0"]
+animations = [{
+"frames": [{
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_8pufg")
+}],
+"loop": true,
+"name": &"hit",
+"speed": 5.0
+}]
+
+[node name="StoneEntity" type="Node2D" unique_id=964780073]
+script = ExtResource("1_stone_entity")
+
+[node name="InteractionArea" type="Area2D" parent="." unique_id=810852968]
+collision_layer = 0
+collision_mask = 2
+
+[node name="CollisionShape" type="CollisionShape2D" parent="InteractionArea" unique_id=1935726685]
+shape = SubResource("RectangleShape2D_0")
+
+[node name="InteractionComponent" type="Node2D" parent="." unique_id=1760669075]
+script = ExtResource("2_interaction_component")
+
+[node name="BeHit" type="Node" parent="InteractionComponent" unique_id=797478218 node_paths=PackedStringArray("interaction_area")]
+script = ExtResource("3_behit")
+interaction_area = NodePath("../../InteractionArea")
+actions = Array[StringName]([&"mine"])
+interaction_label = "Mine"
+
+[node name="HealthComponent" type="Node" parent="InteractionComponent" unique_id=429876671]
+script = ExtResource("4_health")
+
+[node name="Visuals" type="Node2D" parent="." unique_id=405900802]
+
+[node name="AnimatedSprite2D" type="AnimatedSprite2D" parent="Visuals" unique_id=765662532]
+position = Vector2(0, -6)
+scale = Vector2(0.2890625, 0.32812497)
+sprite_frames = SubResource("SpriteFrames_0")
+animation = &"hit"
+
+[node name="AnimationComponent" type="Node2D" parent="." unique_id=330284346 node_paths=PackedStringArray("initial_state", "animated_sprite", "interaction_component")]
+script = ExtResource("5_anim_component")
+initial_state = NodePath("Hit")
+animated_sprite = NodePath("../Visuals/AnimatedSprite2D")
+interaction_component = NodePath("../InteractionComponent")
+
+[node name="Hit" type="Node" parent="AnimationComponent" unique_id=1267599285 node_paths=PackedStringArray("visuals_node")]
+script = ExtResource("6_hit_logic")
+visuals_node = NodePath("../../Visuals")
+
+[node name="Die" type="Node" parent="AnimationComponent" unique_id=993834326 node_paths=PackedStringArray("visuals_node")]
+script = ExtResource("7_die_logic")
+visuals_node = NodePath("../../Visuals")
