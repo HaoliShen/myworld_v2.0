@@ -67,6 +67,9 @@ signal request_toggle_build_menu()
 ## UI 模式变化 (Normal, Build 等)
 signal ui_mode_changed(mode_name: String)
 
+## 请求打开暂停菜单（InteractionManager 在 NORMAL 模式且无选中时从 ESC 转发）
+signal pause_menu_requested()
+
 # =============================================================================
 # 存档系统信号 (Save System Signals)
 # =============================================================================

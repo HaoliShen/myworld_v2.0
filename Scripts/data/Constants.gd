@@ -251,9 +251,8 @@ const INTERACTION_TILE_RANGE: float = 1.5
 # 用于: SaveSystem 存档管理
 # =============================================================================
 
-## 默认存档路径
-# const DEFAULT_SAVE_PATH: String = "user://saves/"
-const DEFAULT_SAVE_PATH: String = "D:/mygames_all_ver/mwv2.0_save/"
+## 默认存档路径（首次启动会写入 user://config.ini，可被用户改动）
+const DEFAULT_SAVE_PATH: String = "user://saves/"
 
 ## 配置文件名
 const CONFIG_FILE_NAME: String = "config.ini"

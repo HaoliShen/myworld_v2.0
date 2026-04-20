@@ -49,17 +49,42 @@ myworld_v2.0/
 | 名称 | 脚本 | 职责 |
 | :-- | :-- | :-- |
 | `SignalBus` | `Scripts/autoload/SignalBus.gd` | 全局信号总线，所有跨系统事件在这里汇总 |
-| `SaveSystem` | `Scripts/autoload/SaveSystem.gd` | 存档目录、世界元数据（`world.ini`）、调试世界回落 |
+| `SaveSystem` | `Scripts/autoload/SaveSystem.gd` | 存档目录、世界元数据（`world.ini`）、增删查改存档 |
 | `InputManager` | `Scripts/autoload/InputManager.gd` | 鼠键事件 → 语义信号；UI 过滤；相机缩放/拖拽；点击/拖拽判定 |
 | `RegionDatabase` | `Scripts/autoload/RegionDatabase.gd` | SQLite 区域分片持久化（每 32×32 区块一个 `.rg` 文件，16 连接 LRU 池） |
 | `SelectionManager` | `Scripts/autoload/SelectionManager.gd` | 单选/多选 RTS 管理（当前尚无框选拖拽） |
+| `KeybindingManager` | `Scripts/autoload/KeybindingManager.gd` | 按键绑定持久化；启动时读 `user://keybindings.cfg` 覆写 InputMap |
 | `PhantomCameraManager` | 插件提供 | Phantom Camera 插件单例 |
 | `BetterTerrain` | 插件提供 | Better Terrain 运行时支持 |
 | `Console` | 插件提供 | 调试控制台（\` 键切换） |
 
 ---
 
-## 3. 主场景 World.tscn 结构
+## 3. 启动流程 & 主菜单
+
+**入口**：`project.godot` 的 `run/main_scene = Scenes/Main/MainMenu.tscn`。
+游戏从主菜单进入，不再直接跑 `World.tscn`；若强行跑 `World.tscn`，`WorldManager`
+检测到 `SaveSystem.current_world_name` 为空会 `push_error` 并跳回主菜单。
+
+```
+MainMenu.tscn                              ← run/main_scene
+└── Control（根，script=MainMenu.gd）
+    ├── 主按钮页：开始游戏 / 设置 / 退出   ← 程序化构建
+    ├── SaveSlotPanel                     ← 存档选择 + 新建 + 详情 + 删除
+    └── SettingsPanel                     ← 设置（目前只有按键重绑）
+```
+
+**进入游戏的两条路径**：
+1. 选中已有存档 → Start → `SaveSystem.load_world(name)` → `change_scene_to_file(World.tscn)`
+2. 新建世界 → 填写 world_name + seed（可空=随机） → `SaveSystem.create_world` → 进入 World.tscn
+
+**退回主菜单**：World 场景里按 ESC（无选中、无建造时）→ `InteractionManager` 发
+`SignalBus.pause_menu_requested` → `PauseMenu` 弹出（`get_tree().paused=true`）→
+"回主菜单" 按钮先 `WorldManager.force_save_all()` 再切场景。
+
+---
+
+## 3.5 主场景 World.tscn 结构
 
 ```
 World (Node)
@@ -69,7 +94,7 @@ World (Node)
 │   │   └── ActiveChunks (Node)                     ← ChunkLogic 挂载点（动态）
 │   ├── InteractionManager (Node)                   ← world_scene/InteractionManager.gd
 │   │   └── StateChart (godot_state_charts)
-│   │       └── Root  initial_state = "BuildMode"   ⚠ 初始值当前被设为 BuildMode
+│   │       └── Root  initial_state = "Normal"
 │   │           ├── Normal  → "build_requested" → BuildMode
 │   │           └── BuildMode  → "cancel" → Normal
 │   └── TerrainObjectManager (Node)                 ← TerrainObjectManager.gd
@@ -80,6 +105,7 @@ World (Node)
 └── UI (CanvasLayer)
     ├── HUD / DebugPanel / BuildMenu / TileInfoPanel
     ├── DebugConsole / DebugOutput
+    └── PauseMenu (script=PauseMenu.gd)           ← 默认隐藏，ESC 触发
 ```
 
 注意：**TileMapLayer 不再挂在 Environment 下**（老文档的写法）。每个区块是一个独立的
@@ -368,8 +394,8 @@ StateChart 初始状态为 `Normal`。
 `build_item_selected(item_id)` / `request_toggle_build_menu()`
 
 其他
-`ui_mode_changed(mode_name)` / `save_completed()` / `world_initialized(seed)` /
-`loading_progress(current, total)` / `world_ready()`
+`ui_mode_changed(mode_name)` / `pause_menu_requested()` / `save_completed()` /
+`world_initialized(seed)` / `loading_progress(current, total)` / `world_ready()`
 
 ---
 
@@ -388,11 +414,12 @@ StateChart 初始状态为 `Normal`。
 
 ## 10. 当前遗留点 / TODO
 
-1. `SaveSystem` 里硬编码 `D:/mygames_all_ver/mwv2.0_save` 覆盖配置——**为开发调试保留**，
-   后续接入正式存档 UI 时再改成配置驱动。
-2. `ChunkLogic._exit_tree()` 是空壳（历史上负责清理视觉，现由 WorldManager 显式接管）。
-3. `SelectionManager` 暂无框选拖拽实现。
-4. `MapGenerator` 的 `noise_frequency/octaves/lacunarity/gain` 等导出参数目前只作用于
+1. `ChunkLogic._exit_tree()` 是空壳（历史上负责清理视觉，现由 WorldManager 显式接管）。
+2. `SelectionManager` 暂无框选拖拽实现。
+3. `MapGenerator` 的 `noise_frequency/octaves/lacunarity/gain` 等导出参数目前只作用于
    elevation 噪声，terrain 噪声频率硬编码在 0.01。
-5. `_sync_neighbor_padding` 仅同步 GROUND 层——高度层目前只在生成期写入、runtime 不编辑，
+4. `_sync_neighbor_padding` 仅同步 GROUND 层——高度层目前只在生成期写入、runtime 不编辑，
    当前用法是正确的；若未来加入 runtime 高度编辑，需扩展。
+5. 设置菜单目前只有按键重绑定；语言、分辨率、音量、图形质量等均未实现。
+6. `SignalBus` 里的 `object_placed / object_removed / interaction_executed` 还没有监听者，
+   等 UI 反馈或成就/日志系统接入时再用。

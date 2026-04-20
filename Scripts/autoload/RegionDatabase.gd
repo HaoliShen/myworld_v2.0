@@ -120,14 +120,16 @@ func save_chunk_blob(chunk_coord: Vector2i, data: PackedByteArray) -> void:
 
 
 ## [维护] 关闭所有打开的数据库连接 (用于退出游戏或切换存档)
+## 线程安全：必须加锁，避免 worker 线程正在使用连接时被关闭。
 func close_all_connections() -> void:
+	_mutex.lock()
 	for region_coord in _db_connections.keys():
 		var db = _db_connections[region_coord]
 		if db != null:
 			db.close_db()
-
 	_db_connections.clear()
 	_connection_timestamps.clear()
+	_mutex.unlock()
 
 
 ## [维护] 垃圾回收 (定期调用)

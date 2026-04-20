@@ -143,10 +143,14 @@ func _on_secondary_click(global_pos: Vector2) -> void:
 
 
 ## 取消操作 (ESC)
+## 优先级：建造模式 > 取消选中 > 打开暂停菜单
 func _on_cancel_action() -> void:
 	match _current_mode:
 		Mode.NORMAL:
-			_deselect()
+			if _selection_manager and _selection_manager.has_selection():
+				_deselect()
+			else:
+				SignalBus.pause_menu_requested.emit()
 		Mode.BUILD:
 			_cancel_build_mode()
 

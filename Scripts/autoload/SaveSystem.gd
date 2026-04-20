@@ -51,7 +51,7 @@ func _ready() -> void:
 # 配置文件操作 (Config File Operations)
 # =============================================================================
 
-## 从config path加载配置文件到_config（目前强制使用了debugpath）
+## 从config path加载配置文件到_config
 func _load_config() -> void:
 	_config = ConfigFile.new()
 	var config_path := _get_config_path()
@@ -59,15 +59,7 @@ func _load_config() -> void:
 	if FileAccess.file_exists(config_path):
 		var err := _config.load(config_path)
 		if err == OK:
-			# 优先使用硬编码路径进行调试
-			var debug_path = "D:/mygames_all_ver/mwv2.0_save"
-			save_path = _config.get_value("paths", "save_path", debug_path)
-			
-			# 如果配置中的路径与调试路径不一致，强制更新为debugpath
-			if save_path != debug_path:
-				save_path = debug_path
-				save_config()
-				
+			save_path = _config.get_value("paths", "save_path", _C.DEFAULT_SAVE_PATH)
 			config_loaded.emit()
 		else:
 			push_warning("SaveSystem: Failed to load config file, using defaults")
@@ -138,6 +130,10 @@ func ensure_directory_exists(path: String) -> bool:
 
 ## 创建新世界
 func create_world(world_name: String, seed: int = 0) -> bool:
+	# 切换世界前必须清掉 RegionDatabase 的连接池。
+	# 否则新世界会继承旧世界的 SQLite 句柄（region 坐标复用），导致串档。
+	_reset_world_context()
+
 	current_world_name = world_name
 	world_seed = seed if seed != 0 else randi()
 
@@ -145,7 +141,6 @@ func create_world(world_name: String, seed: int = 0) -> bool:
 		push_error("SaveSystem: Failed to create world directory")
 		return false
 
-	# 保存世界元数据
 	_save_world_metadata()
 	return true
 
@@ -158,23 +153,57 @@ func load_world(world_name: String) -> bool:
 		push_error("SaveSystem: World does not exist: " + world_name)
 		return false
 
+	# 清旧世界上下文，避免跨存档串档（见 create_world 注释）
+	_reset_world_context()
+
 	current_world_name = world_name
-	return _load_world_metadata()
+	if not _load_world_metadata():
+		return false
+	_touch_world_metadata()
+	return true
 
 
-## 保存世界元数据
+## 切换/重建世界前的上下文重置。
+## 职责：
+## 1. 关闭 RegionDatabase 所有打开的 SQLite 连接（它们属于旧世界）
+## 2. 清零 world_seed（避免继承旧世界种子）
+## 注意：current_world_name 不在这里清——由调用方随即赋上新值，保证始终非空或受控
+func _reset_world_context() -> void:
+	if Engine.has_singleton("RegionDatabase") or get_node_or_null("/root/RegionDatabase"):
+		# autoload 加载期可能还没就绪；兜底 null 检查
+		var rdb := get_node_or_null("/root/RegionDatabase")
+		if rdb and rdb.has_method("close_all_connections"):
+			rdb.close_all_connections()
+	world_seed = 0
+
+
+## 保存世界元数据（首次创建时写入完整字段）
 func _save_world_metadata() -> void:
 	var metadata := ConfigFile.new()
 	metadata.set_value("world", "name", current_world_name)
 	metadata.set_value("world", "seed", world_seed)
 	metadata.set_value("world", "version", "1.0")
 	metadata.set_value("world", "created_at", Time.get_datetime_string_from_system())
+	metadata.set_value("world", "last_played_at", "")
+	metadata.set_value("world", "play_count", 0)
 
 	var path := get_world_path().path_join("world.ini")
 	metadata.save(path)
 
 
-## 加载世界元数据
+## 更新"上次游玩"元数据（每次 load_world 成功后调用）
+func _touch_world_metadata() -> void:
+	var metadata := ConfigFile.new()
+	var path := get_world_path().path_join("world.ini")
+	if metadata.load(path) != OK:
+		return
+	metadata.set_value("world", "last_played_at", Time.get_datetime_string_from_system())
+	var count: int = metadata.get_value("world", "play_count", 0)
+	metadata.set_value("world", "play_count", count + 1)
+	metadata.save(path)
+
+
+## 加载世界元数据（只读 seed 到 SaveSystem 的状态）
 func _load_world_metadata() -> bool:
 	var metadata := ConfigFile.new()
 	var path := get_world_path().path_join("world.ini")
@@ -185,6 +214,71 @@ func _load_world_metadata() -> bool:
 
 	world_seed = metadata.get_value("world", "seed", 0)
 	return true
+
+
+## 获取指定世界的完整元数据字典（主菜单详情面板使用）
+## 返回: { name, seed, version, created_at, last_played_at, play_count, exists }
+## 如果 world.ini 读取失败，返回 { exists: false }
+func get_world_metadata(world_name: String) -> Dictionary:
+	var metadata := ConfigFile.new()
+	var path := save_path.path_join(world_name).path_join("world.ini")
+	if metadata.load(path) != OK:
+		return { "exists": false }
+	return {
+		"exists": true,
+		"name": metadata.get_value("world", "name", world_name),
+		"seed": metadata.get_value("world", "seed", 0),
+		"version": metadata.get_value("world", "version", "unknown"),
+		"created_at": metadata.get_value("world", "created_at", ""),
+		"last_played_at": metadata.get_value("world", "last_played_at", ""),
+		"play_count": metadata.get_value("world", "play_count", 0),
+	}
+
+
+## 删除整个世界目录（含所有 region 文件）
+func delete_world(world_name: String) -> bool:
+	var world_path := save_path.path_join(world_name)
+	if not DirAccess.dir_exists_absolute(world_path):
+		return false
+
+	# 如果正在删除当前活跃世界（理论上不会发生在正常流程里——暂停菜单里没"删档"），
+	# 需要先释放 RegionDatabase 对这些文件的句柄，否则 Windows 下文件删不掉。
+	if current_world_name == world_name:
+		_reset_world_context()
+		current_world_name = ""
+
+	var err := _rm_recursive(world_path)
+	if err != OK:
+		push_error("SaveSystem: Failed to delete world %s (err %d)" % [world_name, err])
+		return false
+	return true
+
+
+## 递归删除目录（Godot 的 DirAccess.remove 不能删非空目录）
+func _rm_recursive(path: String) -> int:
+	var dir := DirAccess.open(path)
+	if dir == null:
+		return ERR_CANT_OPEN
+	dir.list_dir_begin()
+	var entry := dir.get_next()
+	while entry != "":
+		if entry == "." or entry == "..":
+			entry = dir.get_next()
+			continue
+		var child := path.path_join(entry)
+		if dir.current_is_dir():
+			var sub_err := _rm_recursive(child)
+			if sub_err != OK:
+				dir.list_dir_end()
+				return sub_err
+		else:
+			var rm_err := DirAccess.remove_absolute(child)
+			if rm_err != OK:
+				dir.list_dir_end()
+				return rm_err
+		entry = dir.get_next()
+	dir.list_dir_end()
+	return DirAccess.remove_absolute(path)
 
 
 ## 获取所有世界列表
@@ -218,24 +312,3 @@ func world_exists(world_name: String) -> bool:
 	return FileAccess.file_exists(world_ini)
 
 
-## 加载或创建调试世界 (Debug Fallback)
-## 用于: 直接运行场景时，没有通过主菜单选择世界的情况
-## 职责:
-## 1. 检查是否存在名为 "DebugWorld" 的存档
-## 2. 如果存在则加载；不存在则创建
-## 3. 设置 current_world_name 为 "DebugWorld"
-## @return: 世界名称 ("DebugWorld")
-func load_or_create_debug_world() -> String:
-	const DEBUG_WORLD_NAME := "DebugWorld"
-
-	if world_exists(DEBUG_WORLD_NAME):
-		# 存档存在，加载它
-		if not load_world(DEBUG_WORLD_NAME):
-			push_error("SaveSystem: Failed to load debug world")
-	else:
-		# 存档不存在，创建新的调试世界
-		if not create_world(DEBUG_WORLD_NAME, 0):
-			push_error("SaveSystem: Failed to create debug world")
-
-	current_world_name = DEBUG_WORLD_NAME
-	return DEBUG_WORLD_NAME

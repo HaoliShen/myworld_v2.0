@@ -135,8 +135,12 @@ func _connect_signals() -> void:
 
 
 func _startup_world() -> void:
+	# 正常流程：SaveSystem.current_world_name 由主菜单设置。
+	# 直接跑 World.tscn 不再支持——应从 MainMenu.tscn 进入。
 	if SaveSystem.current_world_name.is_empty():
-		SaveSystem.load_or_create_debug_world()
+		push_error("WorldManager: current_world_name is empty; return to main menu")
+		get_tree().change_scene_to_file("res://Scenes/Main/MainMenu.tscn")
+		return
 
 	initialize_world(SaveSystem.world_seed)
 

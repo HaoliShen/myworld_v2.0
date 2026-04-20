@@ -72,65 +72,65 @@ func _ready() -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
-	# 处理鼠标输入
-	if event is InputEventMouseButton:
-		_handle_mouse_button(event as InputEventMouseButton)
-	elif event is InputEventMouseMotion:
+	# 鼠标移动单独处理（不走 InputMap action，因为 action 是"瞬时触发"语义，
+	# 而 drag 需要基于位置变化持续计算）
+	if event is InputEventMouseMotion:
 		_handle_mouse_motion(event as InputEventMouseMotion)
-
-	# 处理键盘输入
-	_handle_keyboard_input(event)
-
-# =============================================================================
-# 鼠标输入处理 (Mouse Input Handling)
-# =============================================================================
-
-func _handle_mouse_button(event: InputEventMouseButton) -> void:
-	# UI 阻断检查 - 如果鼠标在 UI 上，不处理
-	
-	if is_mouse_over_ui():
 		return
 
-	match event.button_index:
-		MOUSE_BUTTON_LEFT:
-			_handle_left_button(event)
-
-		MOUSE_BUTTON_RIGHT:
-			_handle_right_button(event)
-
-		MOUSE_BUTTON_WHEEL_UP:
-			if event.pressed:
-				var world_pos := get_mouse_world_pos()
-				camera_zoom.emit(zoom_speed, world_pos)
-
-		MOUSE_BUTTON_WHEEL_DOWN:
-			if event.pressed:
-				var world_pos := get_mouse_world_pos()
-				camera_zoom.emit(-zoom_speed, world_pos)
+	_handle_actions(event)
 
 
-func _handle_left_button(event: InputEventMouseButton) -> void:
-	if event.pressed:
-		# 按下：记录起始位置
-		_drag_start_position = event.position
+# =============================================================================
+# 输入派发 (走 InputMap action，保证可重绑)
+# =============================================================================
+
+func _handle_actions(event: InputEvent) -> void:
+	# 主操作：按下+松开需要配对，因此分别检测 pressed / released
+	if event.is_action_pressed("primary_action"):
+		if is_mouse_over_ui():
+			return
+		_drag_start_position = _get_event_position(event)
 		_is_left_pressed = true
 		_is_dragging = false
-	else:
-		# 松开：判断是点击还是拖拽
+		return
+	if event.is_action_released("primary_action"):
 		if _is_left_pressed:
 			if not _is_dragging:
-				# 未触发拖拽，判定为点击
-				var world_pos := get_mouse_world_pos()
-				on_primary_click.emit(world_pos)
+				on_primary_click.emit(get_mouse_world_pos())
 			_is_left_pressed = false
 			_is_dragging = false
+		return
+
+	# 次操作：在松开时触发（保持与原来语义一致）
+	if event.is_action_released("secondary_action"):
+		if is_mouse_over_ui():
+			return
+		on_secondary_click.emit(get_mouse_world_pos())
+		return
+
+	# 缩放
+	if event.is_action_pressed("zoom_in"):
+		if is_mouse_over_ui():
+			return
+		camera_zoom.emit(zoom_speed, get_mouse_world_pos())
+		return
+	if event.is_action_pressed("zoom_out"):
+		if is_mouse_over_ui():
+			return
+		camera_zoom.emit(-zoom_speed, get_mouse_world_pos())
+		return
+
+	# UI/菜单键
+	_handle_keyboard_input(event)
 
 
-func _handle_right_button(event: InputEventMouseButton) -> void:
-	if not event.pressed:
-		# 右键松开时触发次要点击
-		var world_pos := get_mouse_world_pos()
-		on_secondary_click.emit(world_pos)
+func _get_event_position(event: InputEvent) -> Vector2:
+	# primary_action 可能是鼠标按钮也可能是键盘键（用户重绑后）。
+	# 鼠标拖拽阈值需要屏幕坐标；键盘触发时用当前鼠标位置做起点即可。
+	if event is InputEventMouseButton:
+		return (event as InputEventMouseButton).position
+	return get_viewport().get_mouse_position()
 
 
 func _handle_mouse_motion(event: InputEventMouseMotion) -> void:

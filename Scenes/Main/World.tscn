@@ -14,6 +14,7 @@
 [ext_resource type="Script" uid="uid://cytafq8i1y8qm" path="res://addons/godot_state_charts/atomic_state.gd" id="12_atomic"]
 [ext_resource type="Script" uid="uid://cf1nsco3w0mf6" path="res://addons/godot_state_charts/transition.gd" id="13_transition"]
 [ext_resource type="Script" uid="uid://bd046eokvcnu2" path="res://addons/phantom_camera/scripts/phantom_camera_host/phantom_camera_host.gd" id="14_pcamhost"]
+[ext_resource type="Script" path="res://Scripts/main_menu/PauseMenu.gd" id="15_pausemenu"]
 
 [node name="World" type="Node" unique_id=1038242496]
 
@@ -94,3 +95,10 @@ grow_vertical = 2
 mouse_filter = 2
 
 [node name="DebugOutput" type="Label" parent="UI" unique_id=1395871865]
+
+[node name="PauseMenu" type="Control" parent="UI" unique_id=1556677889]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+script = ExtResource("15_pausemenu")
