@@ -380,4 +380,4 @@ script = ExtResource("17_attack_anim")
 
 [node name="NPCBrain" type="Node" parent="." unique_id=788854504]
 script = ExtResource("18_npc_brain")
-work_tags = Array[String](["stone"])
+work_tags = Array[String](["stone", "grass", "tree"])

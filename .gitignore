@@ -40,3 +40,9 @@ export/
 
 # Local configuration
 override.cfg
+
+# Archived / outdated docs (local only)
+outdated/
+
+# Claude skill source & packaged outputs (local only)
+skills_created/
