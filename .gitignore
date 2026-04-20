@@ -46,3 +46,6 @@ outdated/
 
 # Claude skill source & packaged outputs (local only)
 skills_created/
+
+# Claude MCP server config (local only)
+.mcp.json

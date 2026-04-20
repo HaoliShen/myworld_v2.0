@@ -7,8 +7,8 @@
 [ext_resource type="Script" uid="uid://dbbn67upxehnf" path="res://Scripts/entity/interaction/InteractionComponent.gd" id="13_interact_main"]
 [ext_resource type="Script" uid="uid://bg4ycebdti3kh" path="res://Scripts/player_scene/ShadowGenerator.gd" id="17_shadow"]
 [ext_resource type="Script" uid="uid://db0rsv3xltc4u" path="res://Scripts/entity/animation/AnimationComponent.gd" id="18_anim_comp"]
-[ext_resource type="Script" uid="uid://6pqweli76x4x" path="res://Scripts/entity/animation/tree/TreeHitLogic.gd" id="20_tree_hit"]
-[ext_resource type="Script" uid="uid://d3cux4ek8b7mi" path="res://Scripts/entity/animation/tree/TreeDieLogic.gd" id="21_tree_die"]
+[ext_resource type="Script" uid="uid://bcbyw4t168j2r" path="res://Scripts/entity/animation/common/SimpleHitLogic.gd" id="20_hit_logic"]
+[ext_resource type="Script" uid="uid://4u1hf00kbdec" path="res://Scripts/entity/animation/common/SimpleDieLogic.gd" id="21_die_logic"]
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_86atj"]
 
@@ -93,9 +93,9 @@ animated_sprite = NodePath("../Visuals/AnimatedSprite2D")
 interaction_component = NodePath("../InteractionComponent")
 
 [node name="Hit" type="Node" parent="AnimationComponent" unique_id=293847566 node_paths=PackedStringArray("visuals_node")]
-script = ExtResource("20_tree_hit")
+script = ExtResource("20_hit_logic")
 visuals_node = NodePath("../../Visuals")
 
 [node name="Die" type="Node" parent="AnimationComponent" unique_id=394857667 node_paths=PackedStringArray("visuals_node")]
-script = ExtResource("21_tree_die")
+script = ExtResource("21_die_logic")
 visuals_node = NodePath("../../Visuals")

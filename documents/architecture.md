@@ -126,7 +126,7 @@ World (Node)
    `_load_chunk_task`（先查 `RegionDatabase`，未命中回落 `MapGenerator.generate_chunk`）。
 2. 完成回主线程 `_on_chunk_data_ready` → 存入 `loaded_data` → 发 `chunk_data_loaded`。
 3. 渲染层：`ready_range` 内的 → `GlobalMapController.render_chunk()`（后台计算 bitmask，
-   主线程每帧 2 ms 预算 apply 到 `ChunkVisual`）。
+   主线程每帧 4 ms 预算 apply 到 `ChunkVisual`）。
 4. 逻辑层：`active_range` 内的 → 实例化 `ChunkLogic` 挂到 `ActiveChunks`。
 5. 离开各自半径时：销毁 ChunkLogic、调用 `clear_chunk()` 卸视觉、
    `is_dirty` 的写回 SQLite 后从 `loaded_data` 抹掉。
@@ -167,7 +167,7 @@ is_dirty:       bool
   `res://Assets/Tilesets/test_tileset.tres`。
 - `render_chunk()` 派发后台任务算每格 8 邻接 bitmask、查表得 atlas，生成
   `ChunkVisual` 实例放入 `_render_queue`。
-- `_process()` 按帧预算（`MAX_RENDER_TIME_PER_FRAME_US` ≈ 2 ms）从队列取一个挂到
+- `_process()` 按帧预算（`MAX_RENDER_TIME_PER_FRAME_US` = 4 ms）从队列取一个挂到
   Environment 下并 `apply_visual_data()`。
 - `set_cell_at()` 提供单格编辑，只重算 3×3 邻居的 bitmask。
 
@@ -200,8 +200,7 @@ is_dirty:       bool
 | :-- | :-- | :-- |
 | `Player` | `CharacterBody2D` | `InteractionComponent` + `AnimationComponent` + `Visuals` + `NavigationAgent2D` + `CameraRig` |
 | `HumanNPC` | `CharacterBody2D` | 同上 + `NPCBrain`（无 `CameraRig`） |
-| `TreeEntity` | `Node2D` | `InteractionComponent`（挂 `BeHitComponent`）+ `AnimationComponent`（挂 Tree 动画逻辑）+ `HealthComponent` |
-| `GrassEntity` / `StoneEntity` | `Node2D` | 同 Tree，但用 `SimpleHit/SimpleDieLogic`，actions 不同（`gather` / `mine`） |
+| `TreeEntity` / `GrassEntity` / `StoneEntity` | `Node2D` | `InteractionComponent`（挂 `BeHitComponent`）+ `AnimationComponent`（统一挂 `SimpleHit/SimpleDieLogic`）+ `HealthComponent`；action 分别为 `chop` / `gather` / `mine` |
 
 重要：`InteractionComponent` 是**分发器 + 门面**，不是状态机；真正的动画状态机是
 `AnimationComponent`。
@@ -219,17 +218,30 @@ is_dirty:       bool
 
 #### Behaviors（`Scripts/entity/interaction/human/`）
 
-| 行为 | action | 循环 | 说明 |
-| :-- | :-- | :-- | :-- |
-| `AttackBehavior` | `&"attack"` | 单次 | 发伤害上下文一次即结束 |
-| `ChopBehavior` | `&"chop"` | Timer `chop_interval`(1s) | 砍树；首次命中成功后 `_has_started=true` 并启定时 |
-| `MineBehavior` | `&"mine"` | Timer 循环 | 采石 |
-| `GatherBehavior` | `&"gather"` | Timer 循环 | 采草 |
-| `NPCInteractionBehavior` | `&"talk"` | 单次 | 对话，调对方 `on_interact_start` 钩子 |
+`BaseInteractionBehavior` 是所有行为的根。**循环型行为** Chop/Gather/Mine 共享
+`LoopingActionBehavior` 基类（提供 timer + 抢锁 + 动画请求 + 信号收尾的完整骨架），
+子类只声明 `_get_default_action_name()`；未来按工具/技能分化差异化逻辑时，
+覆盖基类的扩展点即可：
 
-所有循环型 Behavior 都走相同模式：每轮构造 context → `receive_interaction(ctx)`；
-若对方加锁成功则扣血 + 触发动画；目标死亡/离场/移出范围 → 调
-`interaction_controller.stop_interaction()` 收尾。
+| 行为 | 继承 | action | 说明 |
+| :-- | :-- | :-- | :-- |
+| `AttackBehavior` | `BaseInteractionBehavior` | `&"attack"` | 单次：发伤害上下文一次即结束 |
+| `ChopBehavior` | `LoopingActionBehavior` | `&"chop"` | 砍树 |
+| `MineBehavior` | `LoopingActionBehavior` | `&"mine"` | 采石 |
+| `GatherBehavior` | `LoopingActionBehavior` | `&"gather"` | 采草 |
+| `NPCInteractionBehavior` | `BaseInteractionBehavior` | `&"talk"` | 对话，调对方 `on_interact_start` 钩子 |
+
+`LoopingActionBehavior` 提供的覆盖点（子类按需重写，默认实现与旧 Chop/Gather/Mine 等价）：
+
+| Hook | 默认 | 典型扩展 |
+| :-- | :-- | :-- |
+| `_get_default_action_name()` | `&""` | 子类必写，返回 `&"chop"` 等 |
+| `_compute_damage()` | `base_damage` | 读工具 tier/技能加成 |
+| `_compute_interval()` | `interval` | 工具速度加成、疲劳度惩罚 |
+| `_build_context(target)` | `{action, instigator, damage}` | 追加 `tool_id` / `swing_strength` 等 |
+| `_on_hit_applied(target, ctx)` | 无 | 扣工具耐久、加技能经验、播粒子 |
+| `_can_continue()` | `true` | 背包满 / 饥饿耗尽时返回 false 结束循环 |
+| `_on_target_destroyed(target)` | 无 | 生成掉落物（原木 / 矿石 / 草束） |
 
 ### 5.3 被击/协议（被动方）
 
@@ -258,8 +270,7 @@ is_dirty:       bool
   倾倒 + 淡出）。
 - 通用兜底：`common/SimpleHitLogic` / `SimpleDieLogic`（草、石用）。
 
-`AnimationController.gd` 是早期留下的上层控制器，在当前实体场景里的实际驱动已由
-`AnimationComponent` 接管，后续可考虑清理/合并。
+动画驱动全部由 `AnimationComponent` 负责（旧的 `AnimationController.gd` 已清理）。
 
 ### 5.5 移动（`MovementController.gd`）
 
@@ -298,7 +309,7 @@ is_dirty:       bool
     `_check_build_validity`（区块已加载、目标层为空、高度>0 非水）→
     `WorldManager.set_block_at`。
 
-StateChart 当前 `initial_state=BuildMode`，**是一个配置小问题**——业务上应为 NORMAL。
+StateChart 初始状态为 `Normal`。
 
 ---
 
@@ -377,12 +388,11 @@ StateChart 当前 `initial_state=BuildMode`，**是一个配置小问题**——
 
 ## 10. 当前遗留点 / TODO
 
-1. 根目录 `world.tscn` 是空壳/残留，可删除。
-2. `World.tscn` 里 StateChart `initial_state = "BuildMode"` 应改回 `Normal`。
-3. `SaveSystem` 里写死 `D:/mygames_all_ver/mwv2.0_save` 覆盖了配置，应改为只在 debug 回落。
-4. `ChunkLogic._exit_tree()` 是空的（历史上负责清理视觉，现在被显式流程接管），保留注释。
-5. `AnimationController.gd` 与 `AnimationComponent.gd` 功能有重叠，推荐后续清理。
-6. `SelectionManager` 暂无框选拖拽实现。
-7. `MapGenerator` 的 `noise_frequency/octaves/lacunarity/gain` 等导出参数目前只作用于
-   elevation 噪声，terrain 噪声频率硬编码。
-8. `_sync_neighbor_padding` 仅同步 GROUND 层，高度层的边缘 bitmask 尚未同步。
+1. `SaveSystem` 里硬编码 `D:/mygames_all_ver/mwv2.0_save` 覆盖配置——**为开发调试保留**，
+   后续接入正式存档 UI 时再改成配置驱动。
+2. `ChunkLogic._exit_tree()` 是空壳（历史上负责清理视觉，现由 WorldManager 显式接管）。
+3. `SelectionManager` 暂无框选拖拽实现。
+4. `MapGenerator` 的 `noise_frequency/octaves/lacunarity/gain` 等导出参数目前只作用于
+   elevation 噪声，terrain 噪声频率硬编码在 0.01。
+5. `_sync_neighbor_padding` 仅同步 GROUND 层——高度层目前只在生成期写入、runtime 不编辑，
+   当前用法是正确的；若未来加入 runtime 高度编辑，需扩展。

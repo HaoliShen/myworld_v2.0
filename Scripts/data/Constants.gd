@@ -215,8 +215,9 @@ enum ChunkState {
 # =============================================================================
 
 ## 每帧允许用于区块渲染的最大时间 (微秒)
-## 8ms = 8000us (目标 60FPS 约 16ms/帧，留一半时间给逻辑和其他渲染)
-const MAX_RENDER_TIME_PER_FRAME_US: int = 2000
+## 60FPS 约 16ms/帧；给 chunk 渲染 4ms，留 12ms 给逻辑和主渲染。
+## 单个 chunk 的 apply_visual_data 大约 2–3ms，2ms 太紧容易跨帧堆积。
+const MAX_RENDER_TIME_PER_FRAME_US: int = 4000
 
 # =============================================================================
 # 物理层级 (Physics Layers)

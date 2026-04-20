@@ -86,7 +86,14 @@ var _player: Node2D = null
 
 func _ready() -> void:
 	_connect_signals()
+	get_tree().set_auto_accept_quit(false)
 	call_deferred("_startup_world")
+
+
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_WM_CLOSE_REQUEST:
+		force_save_all()
+		get_tree().quit()
 
 func _process(_delta: float) -> void:
 	if not _is_initialized:

@@ -1,153 +1,16 @@
 class_name MineBehavior
-extends BaseInteractionBehavior
+extends LoopingActionBehavior
 
-## 挖矿行为（结构与 ChopBehavior 保持一致）
-## 设计目标：
-## - 统一“交互会话语义”：先成功 receive_interaction(抢锁成功) 才能播放动画并开始循环
-## - 停止交互时必须解锁，避免目标长期 busy
-## - 若目标未死亡，发出 interaction_finished，触发 TerrainObjectManager 回收临时实体并恢复 tile 视觉
+## 挖矿行为（石头/矿石）。
+## 统一框架由 LoopingActionBehavior 提供。此处仅声明 action 名称。
 ##
-## 注意：具体采矿产出/掉落/背包结算等逻辑暂不在此处理（后续可接入）
+## 未来扩展方向（覆盖父类 hooks）：
+## - _compute_damage()        读玩家装备镐头 tier / 矿石硬度做加成
+## - _compute_interval()      更好的镐头缩短开采间隔
+## - _build_context(target)   追加 tool_id / pickaxe_tier / ore_type_filter
+## - _on_hit_applied()        扣镐头耐久、加采矿技能经验、播击石粒子
+## - _on_target_destroyed()   根据矿石类型生成不同掉落（石头/煤/铁...）
+## - _can_continue()          背包满则停；装备了不支持该矿种的镐头则停
 
-@export_group("Settings")
-## 每次开采的时间间隔（秒）。
-@export var mine_interval: float = 1.0
-## 基础伤害值（后续可从工具/技能读取）。
-@export var base_damage: int = 1
-
-var _timer: Timer
-var _current_target_interaction: InteractionComponent
-var _current_target_node: Node # 实际实体节点（用于监听销毁）
-var _has_started: bool = false
-
-func can_handle(target: Node) -> bool:
-	var comp = _get_interaction_component(target)
-	if comp and comp.can_accept_interaction(&"mine"):
-		return true
-	return false
-
-func execute(target: Node) -> void:
-	var comp = _get_interaction_component(target)
-	if not comp:
-		cancel()
-		return
-
-	_current_target_interaction = comp
-	_has_started = false
-	print("[MineBehavior] execute owner=%s target=%s" % [
-		str(interaction_controller.owner_node.name) if interaction_controller and interaction_controller.owner_node else str(name),
-		str(_current_target_interaction.owner_node.name) if _current_target_interaction and _current_target_interaction.owner_node else str(target.name)
-	])
-	# 获取实际的实体节点用于监听销毁
-	_current_target_node = comp.owner_node
-	if not _current_target_node:
-		_current_target_node = comp.get_parent()
-
-	# 监听目标销毁
-	if _current_target_node:
-		if not _current_target_node.tree_exiting.is_connected(_on_target_lost):
-			_current_target_node.tree_exiting.connect(_on_target_lost)
-		if _current_target_node.has_signal("died"):
-			if not _current_target_node.died.is_connected(_on_target_lost):
-				_current_target_node.died.connect(_on_target_lost)
-
-	# 关键点：必须先成功抢到锁（receive_interaction=true），才能播放开采动画并启动循环
-	# 注意：极端情况下目标可能在首击就死亡，导致引用被 stop_interaction 清空；这里先缓存目标位置并二次校验。
-	var target_pos = _current_target_interaction.get_interaction_position()
-	var ok := _perform_mine()
-	if not ok:
-		return
-	if not is_instance_valid(_current_target_interaction):
-		return
-	_has_started = true
-	request_action_animation({ "target_pos": target_pos })
-	_timer.start()
-	
-func setup(controller: Node) -> void:
-	super.setup(controller)
-	_timer = Timer.new()
-	_timer.one_shot = false
-	_timer.wait_time = mine_interval
-	_timer.timeout.connect(_on_timer_timeout)
-	add_child(_timer)
-
-func cancel() -> void:
-	_stop_mining()
-
-func _stop_mining() -> void:
-	_timer.stop()
-
-	if is_instance_valid(_current_target_interaction):
-		# 只有真正成功开始交互的一方才需要解锁并通知“交互结束”
-		if _has_started:
-			_current_target_interaction.cancel_incoming_interaction(interaction_controller.owner_node)
-			if is_instance_valid(_current_target_node) and _current_target_node.has_signal("interaction_finished"):
-				var hp_ok := true
-				if _current_target_interaction.health_component:
-					hp_ok = _current_target_interaction.health_component.current_health > 0
-				if hp_ok:
-					_current_target_node.emit_signal("interaction_finished")
-
-	if is_instance_valid(_current_target_node):
-		if _current_target_node.tree_exiting.is_connected(_on_target_lost):
-			_current_target_node.tree_exiting.disconnect(_on_target_lost)
-		if _current_target_node.has_signal("died") and _current_target_node.died.is_connected(_on_target_lost):
-			_current_target_node.died.disconnect(_on_target_lost)
-
-	_current_target_interaction = null
-	_current_target_node = null
-	_has_started = false
-
-func _perform_mine() -> bool:
-	if not is_instance_valid(_current_target_interaction):
-		interaction_controller.stop_interaction()
-		return false
-
-	var target_label := "Unknown"
-	if _current_target_node:
-		target_label = str(_current_target_node.name)
-	print("Mining: ", target_label)
-
-	var context = {
-		"action": &"mine",
-		"instigator": interaction_controller.owner_node,
-		"damage": base_damage
-	}
-	var ok := _current_target_interaction.receive_interaction(context)
-	print("[MineBehavior] hit ok=%s target=%s" % [str(ok), target_label])
-	if not ok:
-		# 交互失败：必须停止当前交互，触发 interaction_stopped，确保动画回到 Idle
-		interaction_controller.stop_interaction()
-		return false
-	return true
-
-func _on_timer_timeout() -> void:
-	_perform_mine()
-
-func _on_target_lost() -> void:
-	interaction_controller.stop_interaction()
-
-func _get_interaction_component(target: Node) -> InteractionComponent:
-	# 1. 检查是否是 InteractionComponent
-	if target is InteractionComponent:
-		return target
-		
-	# 2. 如果是 Area2D，尝试通过 owner 或 parent 获取
-	if target is Area2D:
-		# 尝试获取父级的 InteractionComponent
-		var parent = target.get_parent()
-		if parent:
-			# 如果父级是实体，找子组件
-			var candidate_from_parent = parent.get_node_or_null("InteractionComponent")
-			if candidate_from_parent is InteractionComponent:
-				return candidate_from_parent
-			# 如果父级本身是 InteractionComponent (不太可能，Area 通常在 Entity 下)
-			if parent is InteractionComponent:
-				return parent
-	
-	# 3. 检查直接子节点 (标准结构)
-	var candidate_from_self = target.get_node_or_null("InteractionComponent")
-	if candidate_from_self is InteractionComponent:
-		return candidate_from_self
-		
-	return null
+func _get_default_action_name() -> StringName:
+	return &"mine"

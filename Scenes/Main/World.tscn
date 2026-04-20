@@ -36,7 +36,7 @@ script = ExtResource("10_statechart")
 
 [node name="Root" type="Node" parent="Managers/InteractionManager/StateChart" unique_id=1405487947]
 script = ExtResource("11_compound")
-initial_state = NodePath("BuildMode")
+initial_state = NodePath("Normal")
 
 [node name="Normal" type="Node" parent="Managers/InteractionManager/StateChart/Root" unique_id=1292533728]
 script = ExtResource("12_atomic")

@@ -194,29 +194,18 @@ func _start_working() -> void:
 	_has_target_world_pos = false
 	
 	# 使用 TerrainObjectManager 扫描环境
-	if terrain_object_manager and terrain_object_manager.has_method("scan_for_objects"):
-		# 设计：按 work_tags 优先级扫描，但最终选择“最近且可交互”的目标
-		var best_result: Dictionary = {}
-		var best_tag: String = ""
-		var best_dist_sq: float = INF
-
-		for tag in work_tags:
-			var results = terrain_object_manager.scan_for_objects(owner_npc.global_position, detection_radius, tag)
-			if results.is_empty():
-				continue
-
-			# scan_for_objects 已按距离排序：取最近的一个候选即可
-			var candidate = results[0]
-			var dist_sq = float(candidate.get("dist_sq", INF))
-			if dist_sq < best_dist_sq:
-				best_dist_sq = dist_sq
-				best_result = candidate
-				best_tag = tag
-
-		if best_result.is_empty():
+	if terrain_object_manager and terrain_object_manager.has_method("scan_for_objects_multi"):
+		# 一次合并多 tag 扫描，避免按 tag 重复遍历 grid（O(tags * radius^2) -> O(radius^2)）。
+		# scan_for_objects_multi 已按距离排序，且每项附带 "tag" 字段。
+		var results: Array = terrain_object_manager.scan_for_objects_multi(
+			owner_npc.global_position, detection_radius, work_tags
+		)
+		if results.is_empty():
 			_enter_state(State.WANDER)
 			return
 
+		var best_result: Dictionary = results[0]
+		var best_tag: String = String(best_result.get("tag", ""))
 		_target_action = _get_action_for_tag(best_tag)
 
 		if best_result.type == "entity":

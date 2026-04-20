@@ -84,8 +84,15 @@ func request_interaction(tile_pos: Vector2i, layer: int = -1) -> Node2D:
 			entity.interaction_finished.connect(_on_interaction_finished.bind(tile_pos, target_layer, object_id))
 		if entity.has_signal("died"):
 			entity.died.connect(_on_entity_died.bind(tile_pos, target_layer))
-			
+		# 兜底：任何未触发 finished/died 的释放路径（如整场景切换）都要清缓存
+		entity.tree_exiting.connect(_on_entity_tree_exiting.bind(tile_pos))
+
 	return entity
+
+
+func _on_entity_tree_exiting(tile_pos: Vector2i) -> void:
+	if active_entities.has(tile_pos):
+		active_entities.erase(tile_pos)
 
 ## 扫描指定区域内的物体
 ## @param center_pos: 搜索中心世界坐标
@@ -93,76 +100,80 @@ func request_interaction(tile_pos: Vector2i, layer: int = -1) -> Node2D:
 ## @param tag: 物体标签 (如 "tree", "stone")
 ## @return: Array[Dictionary] - { "type": "entity"|"tile", "position": Vector2, "target": Node|Vector2i }
 func scan_for_objects(center_pos: Vector2, radius: float, tag: String) -> Array:
+	return scan_for_objects_multi(center_pos, radius, [tag])
+
+
+## 多标签合并扫描（性能优化）：一次 grid 扫描检查所有 tag，避免按 tag 重复遍历。
+## 返回结果同 scan_for_objects，每项额外带 "tag" 字段说明命中的标签。
+func scan_for_objects_multi(center_pos: Vector2, radius: float, tags: Array) -> Array:
 	var results = []
 	var radius_sq = radius * radius
-	
-	# 1. 获取标签对应的 ID 列表
-	var target_ids = _C.OBJECT_TAG_TABLE.get(tag, [])
-	if target_ids.is_empty():
+
+	# 1. 预构建 id -> (tag, layer) 反查表，避免内层按 tag 线性查找
+	# 同时保留每个 tag 对应的 group 名，供活跃实体匹配使用
+	var id_to_tag: Dictionary = {}
+	var id_to_layer: Dictionary = {}
+	var tag_groups: Dictionary = {}
+	for tag in tags:
+		var ids: Array = _C.OBJECT_TAG_TABLE.get(tag, [])
+		tag_groups[tag] = String(tag).capitalize()
+		for id in ids:
+			id_to_tag[id] = tag
+			id_to_layer[id] = _C.OBJECT_RENDER_LAYER_TABLE.get(id, -1)
+	if id_to_tag.is_empty():
 		return results
-		
-	# 2. 扫描活跃实体 (优先)
-	# 注意：active_entities 是以 tile_pos 为 key 的
+
+	# 2. 扫描活跃实体
 	for tile_pos in active_entities:
 		var entity = active_entities[tile_pos]
-		if not is_instance_valid(entity): continue
-		
-		# 检查距离
+		if not is_instance_valid(entity):
+			continue
 		var dist_sq = entity.global_position.distance_squared_to(center_pos)
-		if dist_sq > radius_sq: continue
-		
-		# 检查是否匹配标签 (假设 Entity 都在对应 Group 中，或者通过 metadata)
-		# 简单起见，我们检查 Entity 是否在 tag 对应的 group 中 (首字母大写)
-		# 或者检查 entity 的原始 ID (目前 entity 没有存 ID，除了在闭包里)
-		# 更好的方法是 Entity 自身有 "tags" 属性或方法
-		var match_tag = false
-		if entity.is_in_group(tag.capitalize()): # "tree" -> "Tree"
-			match_tag = true
-		
-		if match_tag:
-			results.append({
-				"type": "entity",
-				"position": entity.global_position,
-				"target": entity,
-				"dist_sq": dist_sq
-			})
-	
-	# 3. 扫描静态 Tile
+		if dist_sq > radius_sq:
+			continue
+		for tag in tags:
+			if entity.is_in_group(tag_groups[tag]):
+				results.append({
+					"type": "entity",
+					"position": entity.global_position,
+					"target": entity,
+					"dist_sq": dist_sq,
+					"tag": tag
+				})
+				break
+
+	# 3. 扫描静态 Tile —— 一次 grid 遍历同时检查所有 tag 对应的 ID
 	if world_manager:
 		var center_tile = _MapUtils.world_to_tile(center_pos)
 		var tile_radius = int(radius / _C.TILE_SIZE) + 1
-		
 		for y in range(center_tile.y - tile_radius, center_tile.y + tile_radius + 1):
 			for x in range(center_tile.x - tile_radius, center_tile.x + tile_radius + 1):
 				var tile = Vector2i(x, y)
-				
-				# 如果该位置已有活跃实体，跳过 (已在上面处理)
-				if active_entities.has(tile): continue
-				
+				if active_entities.has(tile):
+					continue
 				var world_pos = _MapUtils.tile_to_world_center(tile)
-				var dist_sq = world_pos.distance_squared_to(center_pos)
-				if dist_sq > radius_sq: continue
-				
+				var dist_sq2 = world_pos.distance_squared_to(center_pos)
+				if dist_sq2 > radius_sq:
+					continue
 				var chunk_data = _get_chunk_data(tile)
-				if not chunk_data: continue
-				
+				if not chunk_data:
+					continue
 				var local = _MapUtils.tile_to_local(tile)
-				
-				# 检查每一层
-				for id in target_ids:
-					# 查找该 ID 所在的层
-					var layer = _C.OBJECT_RENDER_LAYER_TABLE.get(id, -1)
-					if layer != -1:
-						if chunk_data.get_object(local.x, local.y, layer) == id:
-							results.append({
-								"type": "tile",
-								"position": world_pos,
-								"target": tile, # Vector2i
-								"dist_sq": dist_sq
-							})
-							break # 找到一个就够了
-	
-	# 按距离排序
+				# 按 tag 顺序优先命中（work_tags 的顺序即优先级）
+				for id in id_to_tag:
+					var layer: int = id_to_layer[id]
+					if layer == -1:
+						continue
+					if chunk_data.get_object(local.x, local.y, layer) == id:
+						results.append({
+							"type": "tile",
+							"position": world_pos,
+							"target": tile,
+							"dist_sq": dist_sq2,
+							"tag": id_to_tag[id]
+						})
+						break
+
 	results.sort_custom(func(a, b): return a.dist_sq < b.dist_sq)
 	return results
 
