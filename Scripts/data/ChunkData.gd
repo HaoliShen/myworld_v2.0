@@ -143,6 +143,25 @@ func set_object(x: int, y: int, layer: int, tile_id: int) -> void:
 func has_object_at(x: int, y: int, layer: int) -> bool:
 	return object_map.has(_MapUtils.pack_coord(x, y, layer))
 
+
+# =============================================================================
+# 派生查询 (Derived Queries)
+# =============================================================================
+
+## 获取 (x, y) 处的"高度层级"——最高的非空 ExH 层索引。
+## 返回值：1..4 表示 ExH1-4 有数据；0 表示没有任何 ExH 层（在基础层级）。
+## 注意：水面 / 陆地都会返回 0，区分水面用 `is_water` 而不是 elevation。
+func get_elevation(x: int, y: int) -> int:
+	for layer_idx in range(4, 0, -1):
+		if get_terrain(x, y, layer_idx) != -1:
+			return layer_idx
+	return 0
+
+
+## (x, y) 处的基础地形是否为水面
+func is_water(x: int, y: int) -> bool:
+	return get_terrain(x, y, 0) == _C.BASE_TERRAINS.WATER
+
 # =============================================================================
 # 序列化接口 (Serialization)
 # =============================================================================

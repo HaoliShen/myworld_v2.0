@@ -8,7 +8,9 @@
 [ext_resource type="PackedScene" path="res://Scenes/UI/DebugPanel.tscn" id="6_debug"]
 [ext_resource type="PackedScene" path="res://Scenes/UI/BuildMenu.tscn" id="7_buildmenu"]
 [ext_resource type="Script" uid="uid://b1cw6fkgaj0oa" path="res://Scripts/world_scene/TerrainObjectManager.gd" id="8_lp0bp"]
+[ext_resource type="Script" path="res://Scripts/world_scene/EntityManager.gd" id="9_entitymgr"]
 [ext_resource type="PackedScene" path="res://Scenes/UI/TileInfoPanel.tscn" id="8_tileinfo"]
+[ext_resource type="PackedScene" path="res://Scenes/UI/InventoryPanel.tscn" id="16_inventory"]
 [ext_resource type="Script" uid="uid://couw105c3bde4" path="res://addons/godot_state_charts/state_chart.gd" id="10_statechart"]
 [ext_resource type="Script" uid="uid://jk2jm1g6q853" path="res://addons/godot_state_charts/compound_state.gd" id="11_compound"]
 [ext_resource type="Script" uid="uid://cytafq8i1y8qm" path="res://addons/godot_state_charts/atomic_state.gd" id="12_atomic"]
@@ -58,6 +60,9 @@ delay_in_seconds = "0.0"
 [node name="TerrainObjectManager" type="Node" parent="Managers" unique_id=1846130441]
 script = ExtResource("8_lp0bp")
 
+[node name="EntityManager" type="Node" parent="Managers" unique_id=1998877665]
+script = ExtResource("9_entitymgr")
+
 [node name="Environment" type="Node2D" parent="." unique_id=1889176356]
 y_sort_enabled = true
 script = ExtResource("4_mapctrl")
@@ -84,6 +89,8 @@ y_sort_enabled = true
 [node name="BuildMenu" parent="UI" unique_id=1345650324 instance=ExtResource("7_buildmenu")]
 
 [node name="TileInfoPanel" parent="UI" unique_id=1708867188 instance=ExtResource("8_tileinfo")]
+
+[node name="InventoryPanel" parent="UI" unique_id=1845392011 instance=ExtResource("16_inventory")]
 
 [node name="DebugConsole" type="Control" parent="UI" unique_id=345355063]
 layout_mode = 3

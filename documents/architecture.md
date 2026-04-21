@@ -54,6 +54,7 @@ myworld_v2.0/
 | `RegionDatabase` | `Scripts/autoload/RegionDatabase.gd` | SQLite 区域分片持久化（每 32×32 区块一个 `.rg` 文件，16 连接 LRU 池） |
 | `SelectionManager` | `Scripts/autoload/SelectionManager.gd` | 单选/多选 RTS 管理（当前尚无框选拖拽） |
 | `KeybindingManager` | `Scripts/autoload/KeybindingManager.gd` | 按键绑定持久化；启动时读 `user://keybindings.cfg` 覆写 InputMap |
+| `PlayerInventory` | `Scripts/autoload/PlayerInventory.gd` | 玩家材料库存（Dictionary[String,int]）；发 `inventory_changed` 信号 |
 | `PhantomCameraManager` | 插件提供 | Phantom Camera 插件单例 |
 | `BetterTerrain` | 插件提供 | Better Terrain 运行时支持 |
 | `Console` | 插件提供 | 调试控制台（\` 键切换） |
@@ -84,6 +85,57 @@ MainMenu.tscn                              ← run/main_scene
 
 ---
 
+## 3.1 存档数据分层（Phase 1b 起）
+
+存档系统按"数据的聚合层次"分成三层，物理上也分成三个文件/目录：
+
+| 层 | 内容 | 存储 | scope |
+| :-- | :-- | :-- | :-- |
+| **Tile 级** | terrain / 高度 / object_map（单格物体如草/树/石） | `regions/r.X.Y.rg`（SQLite，按 region 分片） | chunk 内 |
+| **世界级实体** | NPC / 动物 / 怪物 / （future）结构 / 村庄 | `world.db`（SQLite，世界唯一） | 跨 chunk，全局索引 |
+| **元数据** | 世界名 / seed / 版本 / 玩家位置 / 游玩次数 | `world.ini`（ConfigFile） | 世界唯一 |
+
+**为什么涌现实体不能挂 chunk**：玩家可以造跨 chunk 的建筑，村庄可以覆盖几十个 chunk。
+如果把 structure/village 数据塞进某个 chunk，跨 chunk 边界时要么丢、要么需要复杂的
+"owner chunk + referenced chunks" 机制。统一挂 world.db 后，chunk 只管 tile，
+聚合实体通过 tile 坐标反查 chunk——单向依赖，简洁。
+
+**`world.db` 的 schema（Phase 1b 已建好）**：
+```
+entities   — uuid, kind, x, y, hp, max_hp, state_blob, updated_at
+structures — id, kind, tiles_json, bbox, village_id, created_at   （预留 Phase 3）
+villages   — id, name, center, bbox, created_at                   （预留 Phase 4）
+meta       — key, value（schema_version 等）
+```
+
+**WorldManager 的启动/保存流程**：
+```
+启动:
+  load_world → world.db 打开 → WorldManager._startup_world
+    ├── Player spawn 位置 = SaveSystem.player_spawn_pos（world.ini）
+    ├── PlayerInventory.restore(SaveSystem.load_player_inventory()) 恢复材料
+    └── EntityManager.boot_from_db() 读 entities 表逐个实例化；返回 0 则 seed 默认 NPC
+
+保存（退出窗口 / 回主菜单 / 显式 force_save_all）:
+  1. 脏 chunk → RegionDatabase.save_chunk （写 .rg）
+  2. Player 坐标 → SaveSystem.save_player_position（覆盖 world.ini [player] x/y）
+  3. 玩家库存 → SaveSystem.save_player_inventory（覆盖 world.ini [inventory]）
+  4. 所有活动实体 → EntityManager.snapshot_all_to_db（INSERT OR REPLACE entities）
+```
+
+### 建造 & 材料（Phase 2a）
+
+- **自然资源 ≠ 建筑方块**：`ID_GRASS/ID_TREE/ID_STONE`（200–499 段）是采集物，**不在 BuildMenu 里**。建筑方块用 500+ 段（`ID_WOOD_WALL / ID_STONE_WALL / ID_WOOD_FLOOR`），通过 `Constants.BUILD_COSTS` 声明材料消耗。
+- **采集产出**：`Constants.HARVEST_YIELDS` 是数据驱动的映射，但目前 ChopBehavior/GatherBehavior/MineBehavior 在 `_on_target_destroyed` 里直接硬编码产出（wood 2 / fiber 1 / stone 1）；仅当 `interaction_controller.owner_node is Player` 时入库，NPC 采集暂不产出。
+- **建造扣材料**：`InteractionManager._handle_build_primary_click` 在位置合法性通过后，先调 `PlayerInventory.remove_batch(cost)`，扣减失败则 early-return。
+- **视觉占位**：建筑方块 tile 当前在 `OBJECT_RESOURCE_TABLE` 里复用 stone 的 atlas 坐标——仓库里已有 `RockWall.png / GrassWall.png / fence.png`，等注册进 `test_tileset.tres` 后替换。
+
+**跨存档隔离**：`SaveSystem._reset_world_context()` 切世界时同时关 RegionDatabase
+连接池和 world.db 句柄，防止串档（详见 `RegionDatabase._db_connections` 的 key
+冲突说明）。
+
+---
+
 ## 3.5 主场景 World.tscn 结构
 
 ```
@@ -97,7 +149,8 @@ World (Node)
 │   │       └── Root  initial_state = "Normal"
 │   │           ├── Normal  → "build_requested" → BuildMode
 │   │           └── BuildMode  → "cancel" → Normal
-│   └── TerrainObjectManager (Node)                 ← TerrainObjectManager.gd
+│   ├── TerrainObjectManager (Node)                 ← TerrainObjectManager.gd
+│   └── EntityManager (Node)                        ← EntityManager.gd（NPC 持久化 + kind 注册表）
 ├── Environment (Node2D, y_sort=true)               ← GlobalMapController.gd
 │   ├── Camera2D
 │   │   └── PhantomCameraHost
@@ -422,4 +475,6 @@ StateChart 初始状态为 `Normal`。
    当前用法是正确的；若未来加入 runtime 高度编辑，需扩展。
 5. 设置菜单目前只有按键重绑定；语言、分辨率、音量、图形质量等均未实现。
 6. `SignalBus` 里的 `object_placed / object_removed / interaction_executed` 还没有监听者，
-   等 UI 反馈或成就/日志系统接入时再用。
+   等 UI 反馈或成就/日志系统接入时再用（Phase 3 的 StructureRecognizer 会消费 object_placed/removed）。
+7. Phase 1b 所有实体启动时一次性激活；未来实体规模变大需加"按距离 dormant/active"分层。
+8. NPC 的 state_blob 目前为空字符串；Phase 3 起用于存 `work_structure_id` / `home_village_id` / schedule 进度等。

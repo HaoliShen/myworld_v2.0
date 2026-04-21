@@ -70,6 +70,10 @@ signal ui_mode_changed(mode_name: String)
 ## 请求打开暂停菜单（InteractionManager 在 NORMAL 模式且无选中时从 ESC 转发）
 signal pause_menu_requested()
 
+## 建造失败通知（用于 HUD 浮出提示）
+## reason 示例："材料不足：需要 木 x2" / "不能在水上建造" / "该位置已被占用"
+signal build_failed(reason: String)
+
 # =============================================================================
 # 存档系统信号 (Save System Signals)
 # =============================================================================

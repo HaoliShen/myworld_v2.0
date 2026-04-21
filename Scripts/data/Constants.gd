@@ -52,8 +52,16 @@ enum Layer {
 # =============================================================================
 # 地面配置 (Ground Configuration)
 # =============================================================================
-##地面层tileset资源路径
+## 地形（Ground + ExH1–4）层使用的 TileSet 资源路径。
+## 这是"terrain layer"的 tileset，只给 GroundLayer / ExH1-4Layer 用；GlobalMapController 会 load 它。
+## 物体层用的是另一个 tileset，见下面的 OBJECT_TILESET 注释。
 const GROUND_TILESET:String = "res://Assets/Tilesets/test_tileset.tres"
+
+## 物体层（DecorationLayer / ObstacleLayer / NavigationLayer）使用的 TileSet 路径。
+## 说明：此常量只是文档/提示——运行时实际绑定由 Chunk.tscn 里 TileMapLayer 的 tile_set 属性决定，
+## 代码不会从这里去 load；改这里不会让物体换 tileset（需要同步改 Chunk.tscn）。
+## 放在这里的目的是让开发者知道 OBJECT_RESOURCE_TABLE 里的 source_id/atlas 是相对哪个文件。
+const OBJECT_TILESET: String = "res://Assets/Tilesets/main_tileset.tres"
 
 ## 地面 Terrain Set 索引
 const GROUND_TERRAIN_SET: int = 0
@@ -121,19 +129,33 @@ const NAV_TILE_UNWALKABLE: Vector2i = Vector2i(56, 26)
 # =============================================================================
 
 ## 物体 ID 常量 (便于代码引用)
+## 200-499: 自然资源（可采集，不可建造）
+## 500+:    建筑方块（可建造，消耗材料）
 const ID_GRASS: int = 200
 const ID_TREE: int = 300
 const ID_STONE: int = 400
+
+const ID_WOOD_WALL: int = 500
+const ID_STONE_WALL: int = 501
+const ID_WOOD_FLOOR: int = 502
+
 
 ## 物体 ID 表 (Name -> ID)
 const OBJECT_ID_TABLE: Dictionary = {
 	"GRASS": ID_GRASS,
 	"TREE": ID_TREE,
-	"STONE": ID_STONE
+	"STONE": ID_STONE,
+	"WOOD_WALL": ID_WOOD_WALL,
+	"STONE_WALL": ID_STONE_WALL,
+	"WOOD_FLOOR": ID_WOOD_FLOOR,
 }
 
 ## 物体资源配置表 (ID -> Resource Config)
-## source_id: -1 表示暂时不渲染 (用于开发阶段或无资源物体)
+## 字段：
+##   source_id — 在 OBJECT_TILESET (main_tileset.tres) 内部的 TileSetAtlasSource 索引
+##               （0=Items / 1=stone-and-bush / 2=roguelikeSheet / 5=tileset16x16 / 7=Tileset）
+##   atlas     — 单个 Vector2i 或 Array[Vector2i]（多个用于随机变体）
+## source_id: -1 表示暂时不渲染
 const OBJECT_RESOURCE_TABLE: Dictionary = {
 	ID_GRASS: { "source_id": 1, "atlas": [Vector2i(6, 19),Vector2i(7,19),Vector2i(8,19),Vector2i(9,19),Vector2i(10,19),Vector2i(11,19)] },
 	ID_STONE:  { "source_id": 1, "atlas": [Vector2i(12, 18),Vector2i(12,19),Vector2i(12,20)] },
@@ -141,13 +163,20 @@ const OBJECT_RESOURCE_TABLE: Dictionary = {
 	Vector2i(14, 0),Vector2i(20,0),Vector2i(26,0),
 	Vector2i(14,6),Vector2i(20,6),Vector2i(26,6),
 	Vector2i(14,12),Vector2i(20,12),Vector2i(26,12)] },
+	# 建筑方块
+	ID_WOOD_WALL:   { "source_id": 2, "atlas": [Vector2i(36, 15)] },
+	ID_STONE_WALL:  { "source_id": 2, "atlas": [Vector2i(29, 15)] },
+	ID_WOOD_FLOOR:  { "source_id": 2, "atlas": [Vector2i(8, 2)] },
 }
 
 ## 物体渲染层级表 (ID -> Layer Enum)
 const OBJECT_RENDER_LAYER_TABLE: Dictionary = {
 	ID_GRASS: Layer.DECORATION,
 	ID_TREE:  Layer.DECORATION,
-	ID_STONE: Layer.OBSTACLE
+	ID_STONE: Layer.OBSTACLE,
+	ID_WOOD_WALL:  Layer.OBSTACLE,
+	ID_STONE_WALL: Layer.OBSTACLE,
+	ID_WOOD_FLOOR: Layer.DECORATION,
 }
 
 ## 物体标签表 (Tag -> Array[ID])
@@ -156,6 +185,45 @@ const OBJECT_TAG_TABLE: Dictionary = {
 	"tree": [ID_TREE],
 	"stone": [ID_STONE],
 	"grass": [ID_GRASS]
+}
+
+# =============================================================================
+# 材料与建造代价 (Phase 2a)
+# =============================================================================
+
+## 材料键名（作为 PlayerInventory / world.ini [inventory] 段的 key）
+const MATERIAL_WOOD: String = "wood"
+const MATERIAL_STONE: String = "stone"
+const MATERIAL_FIBER: String = "fiber"
+
+## 采集产出：自然资源 ID → { 材料名 : 数量 }
+## 当 Player 砍/挖/采完一个目标时，LoopingActionBehavior 子类会查此表给玩家加材料。
+const HARVEST_YIELDS: Dictionary = {
+	ID_TREE:  { MATERIAL_WOOD: 2 },
+	ID_STONE: { MATERIAL_STONE: 1 },
+	ID_GRASS: { MATERIAL_FIBER: 1 },
+}
+
+## 建造代价：建筑 ID → { 材料名 : 数量 }
+## InteractionManager._execute_build 在放置前查此表扣材料；不够则拒绝建造。
+const BUILD_COSTS: Dictionary = {
+	ID_WOOD_WALL:  { MATERIAL_WOOD: 2 },
+	ID_STONE_WALL: { MATERIAL_STONE: 2 },
+	ID_WOOD_FLOOR: { MATERIAL_WOOD: 1 },
+}
+
+## UI 显示名（BuildMenu 按钮文字用）
+const BUILD_DISPLAY_NAMES: Dictionary = {
+	ID_WOOD_WALL:  "木墙",
+	ID_STONE_WALL: "石墙",
+	ID_WOOD_FLOOR: "木地板",
+}
+
+## 材料显示名（HUD 用）
+const MATERIAL_DISPLAY_NAMES: Dictionary = {
+	MATERIAL_WOOD:  "木",
+	MATERIAL_STONE: "石",
+	MATERIAL_FIBER: "草",
 }
 
 # =============================================================================

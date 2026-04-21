@@ -15,8 +15,8 @@ script = ExtResource("1_hud")
 [node name="MarginContainer" type="MarginContainer" parent="."]
 layout_mode = 1
 anchors_preset = 0
-offset_right = 200.0
-offset_bottom = 100.0
+offset_right = 260.0
+offset_bottom = 140.0
 theme_override_constants/margin_left = 10
 theme_override_constants/margin_top = 10
 
@@ -38,3 +38,25 @@ text = "Mode: Normal"
 [node name="FPSLabel" type="Label" parent="MarginContainer/VBoxContainer"]
 layout_mode = 2
 text = "FPS: 60"
+
+[node name="MaterialsLabel" type="Label" parent="MarginContainer/VBoxContainer"]
+layout_mode = 2
+text = "材料: —"
+
+[node name="BuildHintLabel" type="Label" parent="."]
+layout_mode = 1
+anchors_preset = 7
+anchor_left = 0.5
+anchor_top = 1.0
+anchor_right = 0.5
+anchor_bottom = 1.0
+offset_left = -200.0
+offset_top = -120.0
+offset_right = 200.0
+offset_bottom = -80.0
+grow_horizontal = 2
+grow_vertical = 0
+horizontal_alignment = 1
+vertical_alignment = 1
+modulate = Color(1, 1, 1, 0)
+text = ""

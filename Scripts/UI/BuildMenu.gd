@@ -66,13 +66,15 @@ func _connect_signals() -> void:
 # =============================================================================
 
 func _setup_build_items() -> void:
-	# 从 Constants 获取可建造物品
-	# 这里使用预定义的列表，实际项目可从配置文件加载
-	_build_items = [
-		{"id": _C.ID_GRASS, "name": "Grass", "layer": _C.Layer.DECORATION},
-		{"id": _C.ID_TREE, "name": "Tree", "layer": _C.Layer.DECORATION},
-		{"id": _C.ID_STONE, "name": "Stone", "layer": _C.Layer.OBSTACLE},
-	]
+	# 建造菜单只放"建筑方块"——自然资源（草/树/石）是采集物，不应出现在这里。
+	# palette 从 Constants.BUILD_COSTS 的 key 派生，新增建筑方块只需在那里加一行。
+	_build_items.clear()
+	for build_id in _C.BUILD_COSTS.keys():
+		_build_items.append({
+			"id": int(build_id),
+			"name": _C.BUILD_DISPLAY_NAMES.get(build_id, str(build_id)),
+			"layer": _C.OBJECT_RENDER_LAYER_TABLE.get(build_id, _C.Layer.OBSTACLE),
+		})
 
 
 func _create_item_buttons() -> void:
@@ -86,14 +88,24 @@ func _create_item_buttons() -> void:
 	# 创建物品按钮
 	for item in _build_items:
 		var button := Button.new()
-		button.text = item.name
-		button.custom_minimum_size = Vector2(120, 32)
-
+		button.text = _format_button_text(int(item.id), String(item.name))
+		button.custom_minimum_size = Vector2(160, 36)
 		# 绑定点击事件
 		var item_id: int = item.id
 		button.pressed.connect(func(): _on_item_selected(item_id))
-
 		_item_list.add_child(button)
+
+
+## 按钮文字格式："木墙  (木 x2)"
+func _format_button_text(build_id: int, display_name: String) -> String:
+	var cost: Dictionary = _C.BUILD_COSTS.get(build_id, {})
+	if cost.is_empty():
+		return display_name
+	var parts: Array[String] = []
+	for mat_key in cost:
+		var mat_name: String = _C.MATERIAL_DISPLAY_NAMES.get(mat_key, String(mat_key))
+		parts.append("%s x%d" % [mat_name, int(cost[mat_key])])
+	return "%s  (%s)" % [display_name, ", ".join(parts)]
 
 
 # =============================================================================

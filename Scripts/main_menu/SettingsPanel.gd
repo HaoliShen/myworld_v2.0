@@ -154,7 +154,6 @@ const UNAVAILABLE_ACTIONS := {
 	&"move_right": "（WASD 移动未实现）",
 	&"interact": "（功能未实现）",
 	&"toggle_console": "（由 Console 插件处理）",
-	&"toggle_inventory": "（背包未实现）",
 }
 
 

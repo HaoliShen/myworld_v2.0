@@ -148,9 +148,13 @@ func _startup_world() -> void:
 		push_error("WorldManager: Failed to initialize world")
 		return
 
-	var spawn_pos := Vector2(0, 0)
+	# 玩家位置：从 world.ini 读（新世界为 (0,0)）
+	var spawn_pos: Vector2 = SaveSystem.player_spawn_pos
 	_player = PlayerScene.instantiate()
 	_player.global_position = spawn_pos
+
+	# 玩家库存：从 world.ini [inventory] 恢复
+	PlayerInventory.restore(SaveSystem.load_player_inventory())
 
 	var entity_container := get_node_or_null("/root/World/Environment/EntityContainer")
 	if entity_container == null:
@@ -162,35 +166,33 @@ func _startup_world() -> void:
 		_map_controller.add_child(_player)
 
 	# -------------------------------------------------------------------------
-	# 生成测试 NPC
+	# 实体装载：从 world.db 恢复所有 NPC；如果是全新世界，seed 默认几个
 	# -------------------------------------------------------------------------
-	var HumanNPCScene = preload("res://Scenes/Entities/HumanNPC.tscn")
-	var rng = RandomNumberGenerator.new()
-	rng.randomize()
-	
-	for i in range(3): # 生成 3 个 NPC
-		var npc = HumanNPCScene.instantiate()
-		# 在玩家周围 200 像素范围内随机生成
-		var offset = Vector2(rng.randf_range(-200, 200), rng.randf_range(-200, 200))
-		npc.global_position = spawn_pos + offset
-		
-		if entity_container:
-			entity_container.add_child(npc)
-		else:
-			if _map_controller:
-				_map_controller.add_child(npc)
-		print("[WorldManager] Spawned NPC at ", npc.global_position)
+	var entity_mgr := get_node_or_null("/root/World/Managers/EntityManager")
+	if entity_mgr:
+		var loaded_count: int = entity_mgr.boot_from_db()
+		if loaded_count == 0:
+			_seed_default_entities(entity_mgr, spawn_pos)
+	else:
+		push_warning("WorldManager: EntityManager not found, NPC persistence disabled")
 	# -------------------------------------------------------------------------
 
 	var interaction_manager = get_node_or_null("/root/World/Managers/InteractionManager")
 	if interaction_manager:
-		# interaction_manager.set_player(_player)
-		# 自动选中玩家
 		if _selection_manager: _selection_manager.select_unit(_player)
 
 	var start_chunk := _MapUtils.world_to_chunk(spawn_pos)
 	update_chunks(start_chunk)
 	world_ready.emit()
+
+
+## 全新世界的默认实体种子（只在 world.db.entities 为空时跑）
+func _seed_default_entities(entity_mgr: Node, spawn_pos: Vector2) -> void:
+	var rng := RandomNumberGenerator.new()
+	rng.randomize()
+	for i in range(3):
+		var offset := Vector2(rng.randf_range(-200, 200), rng.randf_range(-200, 200))
+		entity_mgr.register_new("HumanNPC", spawn_pos + offset)
 
 
 # =============================================================================
@@ -276,10 +278,20 @@ func update_chunks(player_chunk_coord: Vector2i) -> void:
 	
 
 func force_save_all() -> void:
+	# 1. Chunk 脏数据写回 .rg
 	for coord in loaded_data.keys():
 		var chunk = loaded_data[coord]
 		if chunk and chunk.is_dirty:
 			RegionDatabase.save_chunk(chunk)
+	# 2. 玩家位置写回 world.ini
+	if _player and is_instance_valid(_player):
+		SaveSystem.save_player_position(_player.global_position)
+	# 3. 玩家库存写回 world.ini [inventory]
+	SaveSystem.save_player_inventory(PlayerInventory.snapshot())
+	# 4. 所有活动实体快照写回 world.db.entities
+	var entity_mgr := get_node_or_null("/root/World/Managers/EntityManager")
+	if entity_mgr and entity_mgr.has_method("snapshot_all_to_db"):
+		entity_mgr.snapshot_all_to_db()
 	SignalBus.save_completed.emit()
 
 

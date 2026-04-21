@@ -14,10 +14,17 @@ extends Control
 # 节点引用 (Node References)
 # =============================================================================
 
+const _C = preload("res://Scripts/data/Constants.gd")
+
 @onready var _position_label: Label = $MarginContainer/VBoxContainer/PositionLabel
 @onready var _chunk_label: Label = $MarginContainer/VBoxContainer/ChunkLabel
 @onready var _mode_label: Label = $MarginContainer/VBoxContainer/ModeLabel
 @onready var _fps_label: Label = $MarginContainer/VBoxContainer/FPSLabel
+@onready var _materials_label: Label = $MarginContainer/VBoxContainer/MaterialsLabel
+@onready var _build_hint_label: Label = $BuildHintLabel
+
+## 当前 hint 的 Tween，新消息进来先把旧的 kill 掉避免叠加
+var _hint_tween: Tween = null
 
 # =============================================================================
 # 内部变量 (Internal Variables)
@@ -60,6 +67,14 @@ func _connect_signals() -> void:
 
 	# 监听模式变化 (通过 UI 信号)
 	SignalBus.ui_mode_changed.connect(_on_mode_changed)
+
+	# 材料库存变化（Phase 2a）
+	PlayerInventory.inventory_changed.connect(_on_inventory_changed)
+	# 进入场景时先画一次当前库存
+	_on_inventory_changed(PlayerInventory.snapshot())
+
+	# 建造失败浮动提示
+	SignalBus.build_failed.connect(_on_build_failed)
 
 
 # =============================================================================
@@ -104,3 +119,41 @@ func _update_chunk_display() -> void:
 func _update_mode_display() -> void:
 	if _mode_label:
 		_mode_label.text = "Mode: %s" % _current_mode
+
+
+func _on_inventory_changed(inventory: Dictionary) -> void:
+	if _materials_label == null:
+		return
+	if inventory.is_empty():
+		_materials_label.text = "材料: —"
+		return
+	# 按 MATERIAL_DISPLAY_NAMES 的顺序显示，未命名的 key 直接原样
+	var parts: Array[String] = []
+	for key in _C.MATERIAL_DISPLAY_NAMES.keys():
+		if inventory.has(key):
+			var disp: String = _C.MATERIAL_DISPLAY_NAMES[key]
+			parts.append("%s %d" % [disp, int(inventory[key])])
+	# 兜底：出现未预定义的材料键也列出来
+	for key in inventory.keys():
+		if not _C.MATERIAL_DISPLAY_NAMES.has(key):
+			parts.append("%s %d" % [String(key), int(inventory[key])])
+	# 注意括号：三元优先级让 "材料: " + X if ... else Y 会被解释为 "材料: " + (X if ... else Y)
+	# 后者在 parts 为空时产生 "材料: 材料: —"。改写清楚：
+	if parts.is_empty():
+		_materials_label.text = "材料: —"
+	else:
+		_materials_label.text = "材料: " + "  ".join(parts)
+
+
+## 建造失败提示：屏幕下方浮出一条红色文字，0.3s 淡入 → 停 1.5s → 0.5s 淡出
+func _on_build_failed(reason: String) -> void:
+	if _build_hint_label == null:
+		return
+	if _hint_tween and _hint_tween.is_valid():
+		_hint_tween.kill()
+	_build_hint_label.text = reason
+	_build_hint_label.modulate = Color(1.0, 0.5, 0.5, 0.0)
+	_hint_tween = create_tween()
+	_hint_tween.tween_property(_build_hint_label, "modulate:a", 1.0, 0.15)
+	_hint_tween.tween_interval(1.5)
+	_hint_tween.tween_property(_build_hint_label, "modulate:a", 0.0, 0.4)

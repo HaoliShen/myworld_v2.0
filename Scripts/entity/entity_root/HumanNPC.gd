@@ -16,6 +16,12 @@ signal interaction_started(target: Node)
 var _is_selected: bool = false
 var _current_chunk: Vector2i = Vector2i.ZERO
 
+## 跨会话唯一标识（Phase 1b 持久化）。由 EntityManager 在 spawn 时赋值。
+var entity_uuid: String = ""
+
+## 实体种类名（对应 EntityManager.ENTITY_SCENES 的 key）。与 to_record 的 kind 字段一致。
+const ENTITY_KIND: String = "HumanNPC"
+
 func _ready() -> void:
 	_connect_signals()
 	_current_chunk = MapUtils.world_to_chunk(global_position)
@@ -63,3 +69,65 @@ func command_interact(target: Node) -> bool:
 	if interaction_component:
 		return interaction_component.interact(target)
 	return false
+
+
+# =============================================================================
+# 持久化：序列化到 Dictionary / 从 Dictionary 恢复
+# =============================================================================
+
+## 生成当前状态快照，用于 EntityManager 写入 world.db。
+## state_blob 里放子类独有的状态（future: 工作目标、日程进度 等）。
+func to_record() -> Dictionary:
+	var hp := 0
+	var max_hp := 0
+	var hc = interaction_component.health_component if interaction_component else null
+	if hc:
+		hp = int(hc.current_health)
+		max_hp = int(hc.max_health)
+	return {
+		"uuid": entity_uuid,
+		"kind": ENTITY_KIND,
+		"x": global_position.x,
+		"y": global_position.y,
+		"hp": hp,
+		"max_hp": max_hp,
+		"state_blob": "", # Phase 1b 先留空；Phase 3 起放 work_structure_id 等
+	}
+
+
+## 从 world.db 读出的 record 恢复状态。spawn 时调用一次（在 add_child 之后）。
+func apply_record(record: Dictionary) -> void:
+	entity_uuid = String(record.get("uuid", ""))
+	global_position = Vector2(
+		float(record.get("x", 0.0)),
+		float(record.get("y", 0.0))
+	)
+	# 血量延迟到 _ready 里各组件初始化后再恢复；先缓存。
+	# 约定：max_hp <= 0 表示记录无有效血量（新 seed 的实体走这条路），
+	# 此时不覆盖组件的默认值。
+	var rec_max: int = int(record.get("max_hp", 0))
+	var rec_hp: int = int(record.get("hp", 0))
+	if rec_max > 0:
+		_pending_hp = rec_hp
+		_pending_max_hp = rec_max
+	else:
+		_pending_hp = -1
+		_pending_max_hp = -1
+
+
+var _pending_hp: int = -1
+var _pending_max_hp: int = -1
+
+
+## 由外部（EntityManager）在节点 _ready 完成后调用，把缓存的血量写入 HealthComponent。
+## 单独开一个方法是因为组件的 @onready 在节点进入树之后才生效，
+## apply_record 可能在 @onready 之前调。
+func restore_components_from_record() -> void:
+	if _pending_max_hp <= 0:
+		return
+	var hc = interaction_component.health_component if interaction_component else null
+	if hc:
+		hc.max_health = _pending_max_hp
+		hc.current_health = clampi(_pending_hp, 0, _pending_max_hp)
+	_pending_hp = -1
+	_pending_max_hp = -1

@@ -261,19 +261,48 @@ func _enter_build_mode(blueprint_id: int) -> void:
 
 
 ## 处理建造模式下的左键点击
+## 流程：位置合法性 → 材料检查 → 扣材料 → 放置方块
+## 任一步失败都通过 SignalBus.build_failed 通知 UI 显示原因
 func _handle_build_primary_click(global_pos: Vector2) -> void:
 	if current_blueprint_id < 0:
 		return
 
 	var tile_coord := _MapUtils.world_to_tile(global_pos)
 
-	# 检查建造合法性
-	if _check_build_validity(tile_coord, current_blueprint_id):
-		# 合法：执行建造
-		_execute_build(tile_coord, current_blueprint_id)
-	else:
-		# 不合法：可以播放错误音效
-		pass
+	# 1. 位置合法性
+	var pos_check := _check_build_validity(tile_coord, current_blueprint_id)
+	if not pos_check.ok:
+		SignalBus.build_failed.emit(pos_check.reason)
+		return
+
+	# 2. 材料检查（在扣除前先看够不够，方便生成精确的提示）
+	var cost: Dictionary = _C.BUILD_COSTS.get(current_blueprint_id, {})
+	if not cost.is_empty() and not PlayerInventory.has_at_least(cost):
+		SignalBus.build_failed.emit(_format_insufficient_materials(cost))
+		return
+
+	# 3. 扣材料——走到这里 has_at_least 已保证成功，但 remove_batch 再做原子检查防竞态
+	if not cost.is_empty() and not PlayerInventory.remove_batch(cost):
+		SignalBus.build_failed.emit("材料扣除失败")
+		return
+
+	# 4. 放置
+	_execute_build(tile_coord, current_blueprint_id)
+
+
+## 计算"还差多少"并格式化为人类可读字符串
+func _format_insufficient_materials(cost: Dictionary) -> String:
+	var missing: Array[String] = []
+	for key in cost:
+		var need := int(cost[key])
+		var have := PlayerInventory.count(String(key))
+		if have < need:
+			var diff := need - have
+			var disp: String = _C.MATERIAL_DISPLAY_NAMES.get(key, String(key))
+			missing.append("%s x%d" % [disp, diff])
+	if missing.is_empty():
+		return "材料不足"
+	return "材料不足：还需 " + ", ".join(missing)
 
 
 ## 取消建造模式
@@ -287,38 +316,30 @@ func _cancel_build_mode() -> void:
 
 
 ## 检查某个位置是否可以建造特定建筑
-## @param tile_pos: 瓦片坐标
-## @param blueprint_id: 建筑 ID
-## @return: 是否可以建造
-func _check_build_validity(tile_pos: Vector2i, blueprint_id: int) -> bool:
+## @return: { ok: bool, reason: String }
+## ok=false 时 reason 给出人类可读原因，供 UI 提示用
+func _check_build_validity(tile_pos: Vector2i, blueprint_id: int) -> Dictionary:
 	if _world_manager == null:
-		return false
+		return { "ok": false, "reason": "世界未就绪" }
 
-	# 获取目标位置的区块数据
 	var world_pos := _MapUtils.tile_to_world_center(tile_pos)
 	var chunk_data = _world_manager.get_chunk_data_at(world_pos)
-
 	if chunk_data == null:
-		return false
+		return { "ok": false, "reason": "区块未加载" }
 
-	# 计算局部坐标
 	var local_coord := _MapUtils.tile_to_local(tile_pos)
 
-	# 检查目标位置是否已被占用
-	# 根据建筑类型确定目标层
-	var target_layer := _get_blueprint_layer(blueprint_id)
+	# 不能建在水上
+	if chunk_data.is_water(local_coord.x, local_coord.y):
+		return { "ok": false, "reason": "不能在水上建造" }
 
-	# 检查该层是否已有物体
+	# 目标层已被占用
+	var target_layer := _get_blueprint_layer(blueprint_id)
 	var existing_object = chunk_data.get_object(local_coord.x, local_coord.y, target_layer)
 	if existing_object > 0:
-		return false
+		return { "ok": false, "reason": "该位置已被占用" }
 
-	# 检查地形是否允许建造 (例如：不能在水上建造)
-	var elevation = chunk_data.get_elevation(local_coord.x, local_coord.y)
-	if elevation <= 0:
-		return false
-
-	return true
+	return { "ok": true, "reason": "" }
 
 
 ## 执行建造操作
