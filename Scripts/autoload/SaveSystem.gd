@@ -178,7 +178,7 @@ func load_world(world_name: String) -> bool:
 ## 1. 关闭 RegionDatabase 所有打开的 SQLite 连接（它们属于旧世界）
 ## 2. 关闭 world.db 句柄
 ## 3. 清零 world_seed / player_spawn_pos（避免继承旧世界的状态）
-## 4. 清空 PlayerInventory（避免材料跨存档泄漏）
+## 4. 清空 PlayerInventory、StructureRegistry（避免跨存档泄漏）
 ## 注意：current_world_name 不在这里清——由调用方随即赋上新值，保证始终非空或受控
 func _reset_world_context() -> void:
 	var rdb := get_node_or_null("/root/RegionDatabase")
@@ -190,6 +190,9 @@ func _reset_world_context() -> void:
 	var inv := get_node_or_null("/root/PlayerInventory")
 	if inv and inv.has_method("clear"):
 		inv.clear()
+	var sr := get_node_or_null("/root/StructureRegistry")
+	if sr and sr.has_method("clear"):
+		sr.clear()
 
 
 # =============================================================================
@@ -330,6 +333,82 @@ func entity_count() -> int:
 	if _world_db.query_result.size() == 0:
 		return 0
 	return int(_world_db.query_result[0].n)
+
+
+# =============================================================================
+# Structures 读写 (Phase 3)
+# =============================================================================
+
+## 读取当前世界的所有结构记录
+## 返回 Array[Dictionary]，包含: id, kind, tiles (Array[Vector2i]), bbox (Rect2i), village_id, created_at
+func load_structures() -> Array:
+	var result: Array = []
+	if _world_db == null:
+		return result
+	_world_db.query("SELECT id, kind, tiles_json, bbox_x1, bbox_y1, bbox_x2, bbox_y2, village_id, created_at FROM structures")
+	for row in _world_db.query_result:
+		result.append({
+			"id": int(row.id),
+			"kind": String(row.kind),
+			"tiles": _parse_tiles_json(String(row.tiles_json)),
+			"bbox": Rect2i(int(row.bbox_x1), int(row.bbox_y1), int(row.bbox_x2) - int(row.bbox_x1) + 1, int(row.bbox_y2) - int(row.bbox_y1) + 1),
+			"village_id": int(row.village_id),
+			"created_at": int(row.created_at),
+		})
+	return result
+
+
+## 插入一条新结构记录（id 由调用方指定，见 StructureRegistry 的 id 分配策略）
+func insert_structure(record: Dictionary) -> void:
+	if _world_db == null:
+		return
+	var bbox: Rect2i = record.get("bbox", Rect2i())
+	var ts := int(record.get("created_at", Time.get_unix_time_from_system()))
+	_world_db.query_with_bindings(
+		"INSERT OR REPLACE INTO structures (id, kind, tiles_json, bbox_x1, bbox_y1, bbox_x2, bbox_y2, village_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+		[
+			int(record.get("id", 0)),
+			String(record.get("kind", "")),
+			_tiles_to_json(record.get("tiles", [])),
+			bbox.position.x,
+			bbox.position.y,
+			bbox.position.x + bbox.size.x - 1,
+			bbox.position.y + bbox.size.y - 1,
+			int(record.get("village_id", -1)),
+			ts,
+		]
+	)
+
+
+## 按 id 删除结构
+func delete_structure(structure_id: int) -> void:
+	if _world_db == null:
+		return
+	_world_db.query_with_bindings("DELETE FROM structures WHERE id = ?", [structure_id])
+
+
+func _tiles_to_json(tiles: Array) -> String:
+	# 存成 [[x,y],[x,y],...] 形式便于人类可读
+	var arr: Array = []
+	for t in tiles:
+		if t is Vector2i:
+			arr.append([t.x, t.y])
+		elif t is Array and t.size() == 2:
+			arr.append([int(t[0]), int(t[1])])
+	return JSON.stringify(arr)
+
+
+func _parse_tiles_json(s: String) -> Array[Vector2i]:
+	var out: Array[Vector2i] = []
+	if s.is_empty():
+		return out
+	var parsed = JSON.parse_string(s)
+	if not parsed is Array:
+		return out
+	for item in parsed:
+		if item is Array and item.size() == 2:
+			out.append(Vector2i(int(item[0]), int(item[1])))
+	return out
 
 
 ## 保存世界元数据（首次创建时写入完整字段）

@@ -156,6 +156,9 @@ func _startup_world() -> void:
 	# 玩家库存：从 world.ini [inventory] 恢复
 	PlayerInventory.restore(SaveSystem.load_player_inventory())
 
+	# 结构注册表：从 world.db.structures 恢复
+	StructureRegistry.reload_from_current_world()
+
 	var entity_container := get_node_or_null("/root/World/Environment/EntityContainer")
 	if entity_container == null:
 		entity_container = get_tree().current_scene.get_node_or_null("%EntityContainer")

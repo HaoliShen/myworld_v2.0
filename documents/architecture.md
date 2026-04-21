@@ -55,6 +55,8 @@ myworld_v2.0/
 | `SelectionManager` | `Scripts/autoload/SelectionManager.gd` | 单选/多选 RTS 管理（当前尚无框选拖拽） |
 | `KeybindingManager` | `Scripts/autoload/KeybindingManager.gd` | 按键绑定持久化；启动时读 `user://keybindings.cfg` 覆写 InputMap |
 | `PlayerInventory` | `Scripts/autoload/PlayerInventory.gd` | 玩家材料库存（Dictionary[String,int]）；发 `inventory_changed` 信号 |
+| `DevMode` | `Scripts/autoload/DevMode.gd` | 开发者模式全局开关（F10 切换）；HUD 右上角徽标、物品栏 +/- 编辑均受它控制 |
+| `StructureRegistry` | `Scripts/autoload/StructureRegistry.gd` | 涌现结构（shelter 等）的运行时注册表 + `world.db.structures` 同步；发 `structure_added/removed` |
 | `PhantomCameraManager` | 插件提供 | Phantom Camera 插件单例 |
 | `BetterTerrain` | 插件提供 | Better Terrain 运行时支持 |
 | `Console` | 插件提供 | 调试控制台（\` 键切换） |
@@ -130,6 +132,39 @@ meta       — key, value（schema_version 等）
 - **建造扣材料**：`InteractionManager._handle_build_primary_click` 在位置合法性通过后，先调 `PlayerInventory.remove_batch(cost)`，扣减失败则 early-return。
 - **视觉占位**：建筑方块 tile 当前在 `OBJECT_RESOURCE_TABLE` 里复用 stone 的 atlas 坐标——仓库里已有 `RockWall.png / GrassWall.png / fence.png`，等注册进 `test_tileset.tres` 后替换。
 
+### 开发者模式（DevMode）
+
+F10 切换（可在设置里重绑 `toggle_dev_mode`）。打开时 HUD 右上角显示红色"● 开发模式"徽标。
+当前提供的调试能力：
+- **物品栏 +/-**：InventoryPanel 的每个材料槽多一排 +/- 按钮，直接改数量，不走采集流程
+- 未来可以挂更多：无限砍树、秒建造、结构边界可视化、传送指针等
+
+### 涌现结构识别（Phase 3）
+
+`StructureRecognizer`（World.tscn 下节点）监听 `SignalBus.object_placed/removed`，按 pattern 扫描周围 tile 看是否形成/失效结构。`StructureRegistry`（autoload）保存 runtime 镜像 + 同步到 `world.db.structures`。
+
+**已实现 pattern**：
+- `shelter`（庇护所）——任意形状的地板连通块 + 外围 4 邻居必须全部是墙（木墙或石墙皆可；支持凹多边形；上限 256 tile 防逃逸）
+
+**事件流**：
+```
+玩家放墙/地板 → WorldManager.set_block_at → SignalBus.object_placed
+    → StructureRecognizer._on_object_placed
+        → flood-fill 找地板连通块 → 校验外围全是墙
+        → 若命中且未登记 → StructureRegistry.add("shelter", tiles)
+            → INSERT world.db.structures
+            → structure_added 信号 → HUD 浮绿字"形成了一个庇护所"
+
+玩家拆墙 → object_removed → StructureRecognizer 找受影响 structure
+    → 重新验证，pattern 不成立 → StructureRegistry.remove
+        → DELETE world.db.structures → structure_removed 信号 → HUD 浮黄字
+```
+
+**未来扩展方向**：
+- 加 pattern：`blacksmith`（shelter + 熔炉 + 铁砧）、`farm`（大面积耕地）等
+- Phase 4: `VillageRegistry` 聚类算法，把邻近的 structure 编成一个 village
+- Phase 5: NPC 绑定 structure_id / village_id，schedule 驱动日程
+
 **跨存档隔离**：`SaveSystem._reset_world_context()` 切世界时同时关 RegionDatabase
 连接池和 world.db 句柄，防止串档（详见 `RegionDatabase._db_connections` 的 key
 冲突说明）。
@@ -150,7 +185,8 @@ World (Node)
 │   │           ├── Normal  → "build_requested" → BuildMode
 │   │           └── BuildMode  → "cancel" → Normal
 │   ├── TerrainObjectManager (Node)                 ← TerrainObjectManager.gd
-│   └── EntityManager (Node)                        ← EntityManager.gd（NPC 持久化 + kind 注册表）
+│   ├── EntityManager (Node)                        ← EntityManager.gd（NPC 持久化 + kind 注册表）
+│   └── StructureRecognizer (Node)                  ← StructureRecognizer.gd（Phase 3 pattern 匹配）
 ├── Environment (Node2D, y_sort=true)               ← GlobalMapController.gd
 │   ├── Camera2D
 │   │   └── PhantomCameraHost

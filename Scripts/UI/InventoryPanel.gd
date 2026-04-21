@@ -29,6 +29,8 @@ func _ready() -> void:
 	# 通过 InputManager 的语义信号切换（I 键）
 	InputManager.on_toggle_inventory.connect(_on_toggle)
 	PlayerInventory.inventory_changed.connect(_refresh)
+	# 开发模式切换时整块重建，以显示/隐藏 +/- 按钮
+	DevMode.dev_mode_changed.connect(_on_dev_mode_changed)
 
 
 # =============================================================================
@@ -116,12 +118,13 @@ func _populate_slots() -> void:
 
 
 func _make_slot(key: String, display_name: String) -> Control:
-	# 单个格子：PanelContainer 包 VBox（名字 + 数量）
+	# 单个格子：PanelContainer 包 VBox（名字 + 数量 + 可选 dev 按钮）
 	var slot := PanelContainer.new()
-	slot.custom_minimum_size = Vector2(96, 96)
+	slot.custom_minimum_size = Vector2(96, 128 if DevMode.is_enabled else 96)
 
 	var vbox := VBoxContainer.new()
 	vbox.alignment = BoxContainer.ALIGNMENT_CENTER
+	vbox.add_theme_constant_override("separation", 4)
 	slot.add_child(vbox)
 
 	var name_label := Label.new()
@@ -138,7 +141,45 @@ func _make_slot(key: String, display_name: String) -> Control:
 	vbox.add_child(count_label)
 
 	_slot_labels[key] = count_label
+
+	# 开发模式下露出一排 +/- 按钮
+	if DevMode.is_enabled:
+		var row := HBoxContainer.new()
+		row.alignment = BoxContainer.ALIGNMENT_CENTER
+		row.add_theme_constant_override("separation", 4)
+		vbox.add_child(row)
+
+		var minus := Button.new()
+		minus.text = "−"
+		minus.custom_minimum_size = Vector2(32, 28)
+		minus.pressed.connect(_dev_remove.bind(key))
+		row.add_child(minus)
+
+		var plus := Button.new()
+		plus.text = "+"
+		plus.custom_minimum_size = Vector2(32, 28)
+		plus.pressed.connect(_dev_add.bind(key))
+		row.add_child(plus)
+
 	return slot
+
+
+# =============================================================================
+# 开发模式编辑
+# =============================================================================
+
+func _dev_add(key: String) -> void:
+	PlayerInventory.add(key, 1)
+
+
+func _dev_remove(key: String) -> void:
+	PlayerInventory.remove(key, 1)
+
+
+func _on_dev_mode_changed(_enabled: bool) -> void:
+	# 整块重建以加上/移除 +/- 按钮
+	_populate_slots()
+	_refresh(PlayerInventory.snapshot())
 
 
 # =============================================================================

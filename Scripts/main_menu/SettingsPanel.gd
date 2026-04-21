@@ -141,6 +141,7 @@ func _action_display_name(action: StringName) -> String:
 		&"toggle_console": "调试控制台",
 		&"toggle_inventory": "背包",
 		&"toggle_build_menu": "建造菜单",
+		&"toggle_dev_mode": "开发者模式",
 	}
 	return NAMES.get(action, String(action))
 

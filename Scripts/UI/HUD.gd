@@ -22,6 +22,7 @@ const _C = preload("res://Scripts/data/Constants.gd")
 @onready var _fps_label: Label = $MarginContainer/VBoxContainer/FPSLabel
 @onready var _materials_label: Label = $MarginContainer/VBoxContainer/MaterialsLabel
 @onready var _build_hint_label: Label = $BuildHintLabel
+@onready var _dev_badge: Label = $DevModeBadge
 
 ## 当前 hint 的 Tween，新消息进来先把旧的 kill 掉避免叠加
 var _hint_tween: Tween = null
@@ -75,6 +76,14 @@ func _connect_signals() -> void:
 
 	# 建造失败浮动提示
 	SignalBus.build_failed.connect(_on_build_failed)
+
+	# 开发模式徽标
+	DevMode.dev_mode_changed.connect(_on_dev_mode_changed)
+	_on_dev_mode_changed(DevMode.is_enabled)
+
+	# 结构识别事件
+	StructureRegistry.structure_added.connect(_on_structure_added)
+	StructureRegistry.structure_removed.connect(_on_structure_removed)
 
 
 # =============================================================================
@@ -145,14 +154,43 @@ func _on_inventory_changed(inventory: Dictionary) -> void:
 		_materials_label.text = "材料: " + "  ".join(parts)
 
 
+func _on_dev_mode_changed(enabled: bool) -> void:
+	if _dev_badge:
+		_dev_badge.visible = enabled
+
+
 ## 建造失败提示：屏幕下方浮出一条红色文字，0.3s 淡入 → 停 1.5s → 0.5s 淡出
 func _on_build_failed(reason: String) -> void:
+	_show_hint(reason, Color(1.0, 0.5, 0.5))
+
+
+## 结构识别/解散使用同一条浮动提示通道，颜色区分
+func _on_structure_added(record: Dictionary) -> void:
+	var kind := String(record.get("kind", "structure"))
+	_show_hint("形成了一个 %s" % _kind_display_name(kind), Color(0.5, 1.0, 0.6))
+
+
+func _on_structure_removed(_id: int, record: Dictionary) -> void:
+	var kind := String(record.get("kind", "structure"))
+	_show_hint("一个 %s 被破坏了" % _kind_display_name(kind), Color(1.0, 0.8, 0.4))
+
+
+## 结构 kind 的中文显示名
+func _kind_display_name(kind: String) -> String:
+	const NAMES := {
+		"shelter": "庇护所",
+	}
+	return NAMES.get(kind, kind)
+
+
+## 屏幕下方浮出一条提示文字，供 build_failed / structure_added / structure_removed 复用
+func _show_hint(text: String, color: Color) -> void:
 	if _build_hint_label == null:
 		return
 	if _hint_tween and _hint_tween.is_valid():
 		_hint_tween.kill()
-	_build_hint_label.text = reason
-	_build_hint_label.modulate = Color(1.0, 0.5, 0.5, 0.0)
+	_build_hint_label.text = text
+	_build_hint_label.modulate = Color(color.r, color.g, color.b, 0.0)
 	_hint_tween = create_tween()
 	_hint_tween.tween_property(_build_hint_label, "modulate:a", 1.0, 0.15)
 	_hint_tween.tween_interval(1.5)

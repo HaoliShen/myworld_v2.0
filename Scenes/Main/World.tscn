@@ -9,6 +9,7 @@
 [ext_resource type="PackedScene" path="res://Scenes/UI/BuildMenu.tscn" id="7_buildmenu"]
 [ext_resource type="Script" uid="uid://b1cw6fkgaj0oa" path="res://Scripts/world_scene/TerrainObjectManager.gd" id="8_lp0bp"]
 [ext_resource type="Script" path="res://Scripts/world_scene/EntityManager.gd" id="9_entitymgr"]
+[ext_resource type="Script" path="res://Scripts/world_scene/StructureRecognizer.gd" id="17_structurerec"]
 [ext_resource type="PackedScene" path="res://Scenes/UI/TileInfoPanel.tscn" id="8_tileinfo"]
 [ext_resource type="PackedScene" path="res://Scenes/UI/InventoryPanel.tscn" id="16_inventory"]
 [ext_resource type="Script" uid="uid://couw105c3bde4" path="res://addons/godot_state_charts/state_chart.gd" id="10_statechart"]
@@ -62,6 +63,9 @@ script = ExtResource("8_lp0bp")
 
 [node name="EntityManager" type="Node" parent="Managers" unique_id=1998877665]
 script = ExtResource("9_entitymgr")
+
+[node name="StructureRecognizer" type="Node" parent="Managers" unique_id=2001122334]
+script = ExtResource("17_structurerec")
 
 [node name="Environment" type="Node2D" parent="." unique_id=1889176356]
 y_sort_enabled = true

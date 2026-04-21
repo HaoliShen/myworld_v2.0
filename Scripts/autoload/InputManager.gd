@@ -39,6 +39,9 @@ signal on_cancel_action()
 signal on_toggle_inventory()
 signal on_toggle_build_menu()
 
+## 开发者模式切换（F10 默认）
+signal on_toggle_dev_mode()
+
 # =============================================================================
 # 配置参数 (Configuration)
 # =============================================================================
@@ -164,6 +167,10 @@ func _handle_keyboard_input(event: InputEvent) -> void:
 	# B - 切换建造菜单 (可根据需要配置 Input Map)
 	if event.is_action_pressed("toggle_build_menu"):
 		on_toggle_build_menu.emit()
+
+	# F10 - 切换开发者模式
+	if event.is_action_pressed("toggle_dev_mode"):
+		on_toggle_dev_mode.emit()
 
 # =============================================================================
 # 状态查询 (State Queries)

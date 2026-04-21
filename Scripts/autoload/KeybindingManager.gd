@@ -32,6 +32,7 @@ const REBINDABLE_ACTIONS: Array[StringName] = [
 	&"zoom_in", &"zoom_out",
 	&"interact",
 	&"toggle_console", &"toggle_inventory", &"toggle_build_menu",
+	&"toggle_dev_mode",
 ]
 
 # =============================================================================
@@ -150,7 +151,11 @@ func _load_and_apply() -> void:
 		return # 第一次跑/文件不存在，什么都不做，保持项目默认
 
 	for action in REBINDABLE_ACTIONS:
-		var packed = cfg.get_value("bindings", String(action), null)
+		# 用 has_section_key 守护：Godot 4 的 get_value 传 null 默认值时仍会打 ERROR 日志
+		# 新增的 action（如 toggle_dev_mode）在旧 cfg 里还没保存，直接跳过用项目默认
+		if not cfg.has_section_key("bindings", String(action)):
+			continue
+		var packed = cfg.get_value("bindings", String(action))
 		if packed == null:
 			continue
 		var event := _unpack_event(packed)
