@@ -71,6 +71,24 @@ func _on_target_destroyed(_target: Node) -> void:
 	pass
 
 
+func _grant_target_drops_to_player(target: Node, action: StringName = &"") -> bool:
+	if not _is_instigated_by_player():
+		return false
+	if target == null or not target.has_method("get_drops"):
+		return false
+	var drops: Dictionary = target.get_drops(action)
+	if drops.is_empty():
+		return false
+	PlayerInventory.add_batch(drops)
+	return true
+
+
+func _is_instigated_by_player() -> bool:
+	return interaction_controller != null \
+		and interaction_controller.owner_node != null \
+		and interaction_controller.owner_node is Player
+
+
 # =============================================================================
 # 统一框架（子类一般无需重写下方逻辑）
 # =============================================================================

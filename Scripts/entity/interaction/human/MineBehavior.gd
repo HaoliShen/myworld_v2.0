@@ -18,11 +18,7 @@ func _get_default_action_name() -> StringName:
 
 
 func _on_target_destroyed(_target: Node) -> void:
+	if _grant_target_drops_to_player(_target, _get_default_action_name()):
+		return
 	if _is_instigated_by_player():
 		PlayerInventory.add(_C.MATERIAL_STONE, 1)
-
-
-func _is_instigated_by_player() -> bool:
-	return interaction_controller != null \
-		and interaction_controller.owner_node != null \
-		and interaction_controller.owner_node is Player

@@ -3,6 +3,7 @@ extends Node
 # 预加载依赖的类
 const _C = preload("res://Scripts/data/Constants.gd")
 const _MapUtils = preload("res://Scripts/data/MapUtils.gd")
+const _ObjectCatalog = preload("res://Scripts/data/ObjectCatalog.gd")
 
 # =============================================================================
 # 信号 (Signals)
@@ -276,7 +277,7 @@ func _handle_build_primary_click(global_pos: Vector2) -> void:
 		return
 
 	# 2. 材料检查（在扣除前先看够不够，方便生成精确的提示）
-	var cost: Dictionary = _C.BUILD_COSTS.get(current_blueprint_id, {})
+	var cost: Dictionary = _ObjectCatalog.get_build_cost(current_blueprint_id)
 	if not cost.is_empty() and not PlayerInventory.has_at_least(cost):
 		SignalBus.build_failed.emit(_format_insufficient_materials(cost))
 		return
@@ -319,27 +320,7 @@ func _cancel_build_mode() -> void:
 ## @return: { ok: bool, reason: String }
 ## ok=false 时 reason 给出人类可读原因，供 UI 提示用
 func _check_build_validity(tile_pos: Vector2i, blueprint_id: int) -> Dictionary:
-	if _world_manager == null:
-		return { "ok": false, "reason": "世界未就绪" }
-
-	var world_pos := _MapUtils.tile_to_world_center(tile_pos)
-	var chunk_data = _world_manager.get_chunk_data_at(world_pos)
-	if chunk_data == null:
-		return { "ok": false, "reason": "区块未加载" }
-
-	var local_coord := _MapUtils.tile_to_local(tile_pos)
-
-	# 不能建在水上
-	if chunk_data.is_water(local_coord.x, local_coord.y):
-		return { "ok": false, "reason": "不能在水上建造" }
-
-	# 目标层已被占用
-	var target_layer := _get_blueprint_layer(blueprint_id)
-	var existing_object = chunk_data.get_object(local_coord.x, local_coord.y, target_layer)
-	if existing_object > 0:
-		return { "ok": false, "reason": "该位置已被占用" }
-
-	return { "ok": true, "reason": "" }
+	return _ObjectCatalog.can_place(blueprint_id, tile_pos, _world_manager)
 
 
 ## 执行建造操作
@@ -356,11 +337,7 @@ func _execute_build(tile_pos: Vector2i, blueprint_id: int) -> void:
 
 ## 根据建筑 ID 获取目标层
 func _get_blueprint_layer(blueprint_id: int) -> int:
-	# 从 Constants 的映射表获取层级
-	if _C.OBJECT_RENDER_LAYER_TABLE.has(blueprint_id):
-		return _C.OBJECT_RENDER_LAYER_TABLE[blueprint_id]
-	# 默认放置到装饰层
-	return _C.Layer.DECORATION
+	return _ObjectCatalog.get_render_layer(blueprint_id, _C.Layer.DECORATION)
 
 
 # =============================================================================

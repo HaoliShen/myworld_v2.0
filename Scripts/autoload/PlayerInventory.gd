@@ -51,6 +51,18 @@ func add(key: String, n: int) -> void:
 	inventory_changed.emit(_inv)
 
 
+func add_batch(items: Dictionary) -> void:
+	var changed := false
+	for key in items:
+		var n := int(items[key])
+		if n <= 0:
+			continue
+		_inv[String(key)] = count(String(key)) + n
+		changed = true
+	if changed:
+		inventory_changed.emit(_inv)
+
+
 ## 尝试扣除；不够则不扣且返回 false
 func remove(key: String, n: int) -> bool:
 	if n <= 0:

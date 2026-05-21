@@ -6,6 +6,7 @@ extends Node
 
 const _C = preload("res://Scripts/data/Constants.gd")
 const _MapUtils = preload("res://Scripts/data/MapUtils.gd")
+const _ObjectCatalog = preload("res://Scripts/data/ObjectCatalog.gd")
 
 # 实体场景预制体
 # TODO: 实际路径可能需要根据项目调整
@@ -178,21 +179,20 @@ func scan_for_objects_multi(center_pos: Vector2, radius: float, tags: Array) -> 
 	return results
 
 func _create_entity(object_id: int, tile_pos: Vector2i, layer: int) -> Node2D:
-	var scene: PackedScene = null
+	var scene: PackedScene = _resolve_entity_scene(object_id)
 	
-	match object_id:
-		_C.ID_TREE:
-			scene = TreeEntityScene
-		_C.ID_STONE:
-			scene = StoneEntityScene
-		_C.ID_GRASS:
-			scene = GrassEntityScene
-			
 	if not scene:
 		print("[TerrainObjectManager] _create_entity no_scene object_id=%s" % [str(object_id)])
 		return null
 		
 	var instance = scene.instantiate()
+	if instance.has_method("setup_from_definition"):
+		instance.setup_from_definition(
+			object_id,
+			tile_pos,
+			layer,
+			_ObjectCatalog.get_definition(object_id)
+		)
 	# 设置位置
 	instance.global_position = _MapUtils.tile_to_world_center(tile_pos)
 	
@@ -204,6 +204,22 @@ func _create_entity(object_id: int, tile_pos: Vector2i, layer: int) -> Node2D:
 	
 	return instance
 
+
+func _resolve_entity_scene(object_id: int) -> PackedScene:
+	var scene_path := _ObjectCatalog.get_scene_path(object_id)
+	if not scene_path.is_empty():
+		var scene := load(scene_path)
+		if scene is PackedScene:
+			return scene
+	match object_id:
+		_C.ID_TREE:
+			return TreeEntityScene
+		_C.ID_STONE:
+			return StoneEntityScene
+		_C.ID_GRASS:
+			return GrassEntityScene
+	return null
+
 func _get_chunk_data(tile_pos: Vector2i):
 	if not world_manager: return null
 	var world_pos = _MapUtils.tile_to_world_center(tile_pos)
@@ -214,17 +230,17 @@ func _hide_tile_visual(tile_pos: Vector2i, object_id: int) -> void:
 	var world_pos = _MapUtils.tile_to_world_center(tile_pos)
 	
 	# Determine render layer from object ID
-	var render_layer = _C.OBJECT_RENDER_LAYER_TABLE.get(object_id, _C.Layer.DECORATION)
+	var render_layer = _ObjectCatalog.get_render_layer(object_id, _C.Layer.DECORATION)
 	
 	# Hide by setting tile_id to -1 (set_cell_at handles this)
 	map_controller.set_cell_at(world_pos, render_layer, -1)
 
-func _restore_tile_visual(tile_pos: Vector2i, layer: int, object_id: int) -> void:
+func _restore_tile_visual(tile_pos: Vector2i, _layer: int, object_id: int) -> void:
 	if not map_controller: return
 	var world_pos = _MapUtils.tile_to_world_center(tile_pos)
 	
 	# Determine render layer from object ID
-	var render_layer = _C.OBJECT_RENDER_LAYER_TABLE.get(object_id, _C.Layer.DECORATION)
+	var render_layer = _ObjectCatalog.get_render_layer(object_id, _C.Layer.DECORATION)
 	
 	# Restore by setting tile_id back to object_id (set_cell_at handles atlas lookup)
 	map_controller.set_cell_at(world_pos, render_layer, object_id)

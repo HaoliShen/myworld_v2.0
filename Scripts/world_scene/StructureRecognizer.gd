@@ -21,6 +21,7 @@ extends Node
 
 const _C = preload("res://Scripts/data/Constants.gd")
 const _MapUtils = preload("res://Scripts/data/MapUtils.gd")
+const _ObjectCatalog = preload("res://Scripts/data/ObjectCatalog.gd")
 
 ## 单个 shelter 的最大 tile 数（防止巨型开放区域被误判成 shelter）
 const MAX_FLOOD: int = 256
@@ -169,11 +170,11 @@ func _get_object_at(tile: Vector2i) -> int:
 
 
 func _is_wall(id: int) -> bool:
-	return WALL_IDS.has(id)
+	return _ObjectCatalog.has_structure_tag(id, "wall")
 
 
 func _is_floor(id: int) -> bool:
-	return FLOOR_IDS.has(id)
+	return _ObjectCatalog.has_structure_tag(id, "floor")
 
 
 func _four_neighbors(t: Vector2i) -> Array[Vector2i]:

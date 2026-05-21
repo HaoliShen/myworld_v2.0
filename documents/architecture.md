@@ -72,9 +72,9 @@ myworld_v2.0/
 ```
 MainMenu.tscn                              ← run/main_scene
 └── Control（根，script=MainMenu.gd）
-    ├── 主按钮页：开始游戏 / 设置 / 退出   ← 程序化构建
-    ├── SaveSlotPanel                     ← 存档选择 + 新建 + 详情 + 删除
-    └── SettingsPanel                     ← 设置（目前只有按键重绑）
+	├── 主按钮页：开始游戏 / 设置 / 退出   ← 程序化构建
+	├── SaveSlotPanel                     ← 存档选择 + 新建 + 详情 + 删除
+	└── SettingsPanel                     ← 设置（目前只有按键重绑）
 ```
 
 **进入游戏的两条路径**：
@@ -114,9 +114,9 @@ meta       — key, value（schema_version 等）
 ```
 启动:
   load_world → world.db 打开 → WorldManager._startup_world
-    ├── Player spawn 位置 = SaveSystem.player_spawn_pos（world.ini）
-    ├── PlayerInventory.restore(SaveSystem.load_player_inventory()) 恢复材料
-    └── EntityManager.boot_from_db() 读 entities 表逐个实例化；返回 0 则 seed 默认 NPC
+	├── Player spawn 位置 = SaveSystem.player_spawn_pos（world.ini）
+	├── PlayerInventory.restore(SaveSystem.load_player_inventory()) 恢复材料
+	└── EntityManager.boot_from_db() 读 entities 表逐个实例化；返回 0 则 seed 默认 NPC
 
 保存（退出窗口 / 回主菜单 / 显式 force_save_all）:
   1. 脏 chunk → RegionDatabase.save_chunk （写 .rg）
@@ -149,15 +149,15 @@ F10 切换（可在设置里重绑 `toggle_dev_mode`）。打开时 HUD 右上�
 **事件流**：
 ```
 玩家放墙/地板 → WorldManager.set_block_at → SignalBus.object_placed
-    → StructureRecognizer._on_object_placed
-        → flood-fill 找地板连通块 → 校验外围全是墙
-        → 若命中且未登记 → StructureRegistry.add("shelter", tiles)
-            → INSERT world.db.structures
-            → structure_added 信号 → HUD 浮绿字"形成了一个庇护所"
+	→ StructureRecognizer._on_object_placed
+		→ flood-fill 找地板连通块 → 校验外围全是墙
+		→ 若命中且未登记 → StructureRegistry.add("shelter", tiles)
+			→ INSERT world.db.structures
+			→ structure_added 信号 → HUD 浮绿字"形成了一个庇护所"
 
 玩家拆墙 → object_removed → StructureRecognizer 找受影响 structure
-    → 重新验证，pattern 不成立 → StructureRegistry.remove
-        → DELETE world.db.structures → structure_removed 信号 → HUD 浮黄字
+	→ 重新验证，pattern 不成立 → StructureRegistry.remove
+		→ DELETE world.db.structures → structure_removed 信号 → HUD 浮黄字
 ```
 
 **未来扩展方向**：
@@ -192,9 +192,9 @@ World (Node)
 │   │   └── PhantomCameraHost
 │   └── EntityContainer (Node2D, y_sort=true)       ← 动态实体（Player/NPC/物化资源）挂这里
 └── UI (CanvasLayer)
-    ├── HUD / DebugPanel / BuildMenu / TileInfoPanel
-    ├── DebugConsole / DebugOutput
-    └── PauseMenu (script=PauseMenu.gd)           ← 默认隐藏，ESC 触发
+	├── HUD / DebugPanel / BuildMenu / TileInfoPanel
+	├── DebugConsole / DebugOutput
+	└── PauseMenu (script=PauseMenu.gd)           ← 默认隐藏，ESC 触发
 ```
 
 注意：**TileMapLayer 不再挂在 Environment 下**（老文档的写法）。每个区块是一个独立的
@@ -366,7 +366,7 @@ is_dirty:       bool
   - `actions: Array[StringName]` 声明可接受动作白名单（如 `[&"chop"]`）。
   - 用 `current_interactor` 做**互斥锁**，`try_lock/unlock`。
   - `interact(ctx)`：加锁 → 校验 action ∈ actions → 校验距离
-    ≤ `interaction_range` → 发 `action_received(ctx)`。
+	≤ `interaction_range` → 发 `action_received(ctx)`。
 - `InteractionComponent` 收到 `action_received` 后从 context 取 `damage` 调用
   `HealthComponent.take_damage(damage, instigator)`。
 
@@ -416,13 +416,13 @@ is_dirty:       bool
 两种模式：
 - **NORMAL**
   - 左键：射线命中 ENTITIES|INTERACTABLES 层 → 选中；若已有选中且目标在
-    `INTERACTION_TILE_RANGE`(1.5 tile) 内 → `command_interact`；否则发 `tile_selected`。
+	`INTERACTION_TILE_RANGE`(1.5 tile) 内 → `command_interact`；否则发 `tile_selected`。
   - 右键：对所有选中单位 `command_move_to`，发 `command_issued("move", pos)` 做反馈效果。
   - ESC：取消选择 / 退出建造模式。
 - **BUILD**
   - 从 `BuildMenu` 点选蓝图 → 进入；左键做
-    `_check_build_validity`（区块已加载、目标层为空、高度>0 非水）→
-    `WorldManager.set_block_at`。
+	`_check_build_validity`（区块已加载、目标层为空、高度>0 非水）→
+	`WorldManager.set_block_at`。
 
 StateChart 初始状态为 `Normal`。
 
@@ -514,3 +514,34 @@ StateChart 初始状态为 `Normal`。
    等 UI 反馈或成就/日志系统接入时再用（Phase 3 的 StructureRecognizer 会消费 object_placed/removed）。
 7. Phase 1b 所有实体启动时一次性激活；未来实体规模变大需加"按距离 dormant/active"分层。
 8. NPC 的 state_blob 目前为空字符串；Phase 3 起用于存 `work_structure_id` / `home_village_id` / schedule 进度等。
+---
+
+## 11. 文档维护规则
+
+`documents/architecture.md` 是长期架构记录，只写已经实现或已经确定的系统、数据流、接口约定和设计决策。
+
+`documents/devplan.md` 是可重复使用的临时计划文档。新的实现计划先写到 `devplan.md`。当某个计划完成后，从 `devplan.md` 删除对应内容，并把稳定的设计和行为说明提升到本架构文档。
+
+## 12. 统一原子物体系统
+
+自然资源方块和建筑方块现在共享同一套物体生命周期：
+
+- `ObjectCatalog` 是物体定义表，集中声明场景路径、渲染层、生命值、可接受动作、建造消耗、掉落、标签、结构识别标签和放置规则。
+- `BlockEntity` 是通用的原子地图物体实体。草、树、石头、木墙、石墙、木地板都可以通过这一套通用场景和脚本物化。
+- `TerrainObjectManager` 只在需要交互时，从 `ChunkData.object_map` 把静态 tile 物化成实体；实体活动期间隐藏原 tile；交互结束后恢复 tile，死亡后从世界数据中移除物体。
+- `LoopingActionBehavior` 的子类通过目标的 `get_drops()` / `ObjectCatalog` 解析掉落，因此破坏基础方块时不需要在每个行为里硬编码产出。
+- `DemolishBehavior` 为玩家和 NPC 的交互组件提供通用拆除建筑方块能力。
+- `StructureRecognizer` 不再硬编码墙和地板 ID，而是读取 `ObjectCatalog.structure_tags`。
+
+## 13. 物体导航约定
+
+导航层复用 `main_tileset.tres` 中已有的透明导航 tile：
+
+- `Constants.NAV_TILE_WALKABLE` 表示可通行格。
+- `Constants.NAV_TILE_UNWALKABLE` 表示不可通行格。
+
+区块初始渲染时，导航由地形和障碍层物体共同计算。运行时编辑必须同步刷新导航层：
+
+- 放置墙体、石头等 `OBSTACLE` 层物体时，对应格会写为 `NAV_TILE_UNWALKABLE`。
+- 移除 `OBSTACLE` 层物体后，会根据当前地形和剩余障碍重新计算；有效地面会恢复为 `NAV_TILE_WALKABLE`。
+- 地板、草等 `DECORATION` 层物体默认不阻挡导航，除非同一格仍存在其他障碍层物体。

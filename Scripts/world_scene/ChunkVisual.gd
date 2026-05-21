@@ -116,6 +116,12 @@ func set_block(local_pos: Vector2i, layer_enum: int, source_id: int, atlas_coord
 		else:
 			layer.set_cell(local_pos, source_id, atlas_coord, alt_id)
 
+
+func set_navigation(local_pos: Vector2i, source_id: int, atlas_coord: Vector2i) -> void:
+	if not navigation_layer:
+		return
+	navigation_layer.set_cell(local_pos, source_id, atlas_coord)
+
 func _get_layer_by_enum(layer_enum: int) -> TileMapLayer:
 	match layer_enum:
 		_C.Layer.GROUND: return ground_layer

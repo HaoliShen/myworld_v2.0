@@ -1,6 +1,9 @@
 class_name GrassEntity
 extends Node2D
 
+const _C = preload("res://Scripts/data/Constants.gd")
+const _ObjectCatalog = preload("res://Scripts/data/ObjectCatalog.gd")
+
 ## 草丛实体逻辑（与 TreeEntity 同构）
 ## 说明：
 ## - 当前阶段只关心“交互闭环”是否打通：可抢锁、可受击/结算、可回写、可回收
@@ -17,6 +20,10 @@ signal died
 @export var max_health: int = 1
 
 var tile_pos: Vector2i
+
+
+func get_drops(_action: StringName = &"") -> Dictionary:
+	return _ObjectCatalog.get_drops(_C.ID_GRASS)
 
 func _ready() -> void:
 	if interaction_component and interaction_component.health_component:

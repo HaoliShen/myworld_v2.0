@@ -1,6 +1,9 @@
 class_name TreeEntity
 extends Node2D
 
+const _C = preload("res://Scripts/data/Constants.gd")
+const _ObjectCatalog = preload("res://Scripts/data/ObjectCatalog.gd")
+
 # 树木实体逻辑
 # 新结构下，大部分交互逻辑已由 InteractionComponent 自动处理
 
@@ -19,6 +22,10 @@ signal died
 
 # 初始数据 (可选)
 var tile_pos: Vector2i
+
+
+func get_drops(_action: StringName = &"") -> Dictionary:
+	return _ObjectCatalog.get_drops(_C.ID_TREE)
 
 func _ready() -> void:
 	# 初始化血量 (如果 InteractionComponent 已经初始化了子组件，这里可以通过它访问)

@@ -125,6 +125,7 @@ func set_cell_at(global_pos: Vector2, layer_enum: int, tile_id: int) -> void:
 			# 优化：仅更新局部区域 (3x3)，而不是重绘整个 Chunk
 			if world_manager:
 				_update_local_terrain_visuals(tile_coord)
+				_update_navigation_cell(tile_coord)
 			return
 		
 		# 如果是添加物体，需要查找资源
@@ -141,6 +142,38 @@ func set_cell_at(global_pos: Vector2, layer_enum: int, tile_id: int) -> void:
 					atlas_coord = atlas_list
 		
 		visual.set_block(local_coord, layer_enum, source_id, atlas_coord)
+		if layer_enum == _C.Layer.DECORATION or layer_enum == _C.Layer.OBSTACLE:
+			_update_navigation_cell(tile_coord)
+
+
+func _update_navigation_cell(tile_coord: Vector2i) -> void:
+	if not world_manager:
+		return
+
+	var chunk_coord := _MapUtils.tile_to_chunk(tile_coord)
+	if not active_chunks.has(chunk_coord):
+		return
+
+	var chunk_data = world_manager.get_chunk_data(chunk_coord)
+	if not chunk_data:
+		return
+
+	var local_coord := _MapUtils.tile_to_local(tile_coord)
+	var nav_coord := _get_navigation_coord_for(chunk_data, local_coord)
+	var visual: ChunkVisual = active_chunks[chunk_coord]
+	visual.set_navigation(local_coord, _C.NAV_SOURCE_ID, nav_coord)
+
+
+func _get_navigation_coord_for(chunk_data: ChunkData, local_coord: Vector2i) -> Vector2i:
+	var t_id = chunk_data.get_terrain(local_coord.x, local_coord.y, 0)
+	var is_blocked := t_id == -1 or t_id == _C.BASE_TERRAINS.WATER
+
+	if chunk_data.get_object(local_coord.x, local_coord.y, _C.Layer.OBSTACLE) > 0:
+		is_blocked = true
+
+	if is_blocked:
+		return _C.NAV_TILE_UNWALKABLE
+	return _C.NAV_TILE_WALKABLE
 
 ## 局部更新地形视觉 (3x3 区域)
 ## @param center_tile: 修改的中心世界瓦片坐标

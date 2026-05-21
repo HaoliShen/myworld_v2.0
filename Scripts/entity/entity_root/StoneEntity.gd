@@ -1,6 +1,9 @@
 class_name StoneEntity
 extends Node2D
 
+const _C = preload("res://Scripts/data/Constants.gd")
+const _ObjectCatalog = preload("res://Scripts/data/ObjectCatalog.gd")
+
 ## 石头实体逻辑（与 TreeEntity 同构）
 ## 职责：
 ## - 作为“地形物体(tile)临时实体化”的承载体，接入 InteractionComponent/BeHit/Health/Animation
@@ -19,6 +22,10 @@ signal died
 
 ## 可选：记录该实体来自的 tile 坐标（当前流程由 TerrainObjectManager 闭包保存，不强依赖这里）
 var tile_pos: Vector2i
+
+
+func get_drops(_action: StringName = &"") -> Dictionary:
+	return _ObjectCatalog.get_drops(_C.ID_STONE)
 
 func _ready() -> void:
 	if interaction_component and interaction_component.health_component:

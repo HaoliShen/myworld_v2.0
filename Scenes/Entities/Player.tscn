@@ -15,6 +15,7 @@
 [ext_resource type="Texture2D" uid="uid://shgw6fl1emux" path="res://Assets/Sprites/Collect_Side-Sheet.png" id="13_hgdn8"]
 [ext_resource type="Script" uid="uid://dbbn67upxehnf" path="res://Scripts/entity/interaction/InteractionComponent.gd" id="13_interact_comp"]
 [ext_resource type="Script" uid="uid://cior5a48cn6lo" path="res://Scripts/entity/interaction/human/MineBehavior.gd" id="13_mine"]
+[ext_resource type="Script" path="res://Scripts/entity/interaction/human/DemolishBehavior.gd" id="13_demolish"]
 [ext_resource type="Texture2D" uid="uid://db6qtr77ppk6a" path="res://Assets/Sprites/Run_Side-Sheet.png" id="13_yheof"]
 [ext_resource type="Script" uid="uid://db0rsv3xltc4u" path="res://Scripts/entity/animation/AnimationComponent.gd" id="14_anim_comp"]
 [ext_resource type="Script" uid="uid://bk6u18smdu0ao" path="res://Scripts/entity/animation/human/IdleLogic.gd" id="15_idle"]
@@ -317,6 +318,10 @@ script = ExtResource("12_health")
 script = ExtResource("11_move_ctrl")
 character_body = NodePath("../..")
 navigation_agent = NodePath("../../NavigationAgent")
+
+[node name="DemolishBehavior" type="Node" parent="InteractionComponent" node_paths=PackedStringArray("animation_logic")]
+script = ExtResource("13_demolish")
+animation_logic = NodePath("../../AnimationComponent/ChopLogic")
 
 [node name="ChopBehavior" type="Node" parent="InteractionComponent" unique_id=685644520 node_paths=PackedStringArray("animation_logic")]
 script = ExtResource("13_chop")
